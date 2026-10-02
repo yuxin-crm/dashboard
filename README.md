@@ -24,3 +24,11 @@
 1. 在 `yuxin-crm/crm` 執行 `DashboardAggregates.cs` 產生彙總 JSON
 2. 將結果存成 `app/data/data.js`，內容格式為 `window.YX_DATA={...};`
 3. commit 並 push，GitHub Pages 約 1 分鐘後更新
+
+## 車輛查詢（只在本機）
+
+「車輛查詢」頁可用牌照號碼或車主查詢，並依車型、車齡、里程、保固、服務廠、專員、業務、消費習慣篩選，帶出車主與車輛基本資料。
+
+- 因為含車主姓名、手機等客戶個資，**資料不放在這個公開儲存庫**，GitHub Pages 上這一頁只顯示說明。
+- 本機使用：直接開啟 `C:\Projects\yuxin-dashboard\app\index.html`，頁面會讀取 `C:\Projects\yuxin-crm\private\vehicles.js`（私人專案、已被 .gitignore 排除）。
+- 資料檔由私人儲存庫的 `tools/excel-analysis/VehicleLookupExport.cs` 從 Excel 產生。
