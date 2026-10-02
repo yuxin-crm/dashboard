@@ -382,7 +382,8 @@ function pageAbout(main){
 // ---------- 車輛查詢（只在本機私人版有資料） ----------
 // 客戶個資放在私人專案 yuxin-crm/private/vehicles.js，不進公開儲存庫。
 // 只有用本機檔案（file:）或 localhost 開啟時才會載入；GitHub Pages 上不會去抓。
-const PRIVATE_SRC='../../yuxin-crm/private/vehicles.js';
+// 依序嘗試：分享包（OneDrive 資料夾內 data/vehicles.js）→ 開發機私人資料夾
+const PRIVATE_SRCS=['data/vehicles.js','../../yuxin-crm/private/vehicles.js'];
 const canPrivate=location.protocol==='file:'||location.hostname==='localhost'||location.hostname==='127.0.0.1';
 let V=null, Vloading=null;
 const LF={q:'',model:'',age:'',km:'',w:'',br:'',adv:'',sales:'',habit:'',sort:'spend',dir:-1,page:0};
@@ -390,7 +391,13 @@ function loadVehicles(){
   if(V) return Promise.resolve(V);
   if(!canPrivate) return Promise.reject(new Error('public'));
   if(Vloading) return Vloading;
-  Vloading=new Promise((ok,fail)=>{const s=document.createElement('script'); s.src=PRIVATE_SRC; s.onload=()=>{ if(!window.YX_VEHICLES) return fail(new Error('empty')); V=prepVehicles(window.YX_VEHICLES); ok(V)}; s.onerror=()=>fail(new Error('missing')); document.head.append(s)});
+  Vloading=new Promise((ok,fail)=>{
+    const tryAt=i=>{ if(i>=PRIVATE_SRCS.length) return fail(new Error('missing'));
+      const s=document.createElement('script'); s.src=PRIVATE_SRCS[i];
+      s.onload=()=>{ if(!window.YX_VEHICLES) return tryAt(i+1); V=prepVehicles(window.YX_VEHICLES); ok(V)};
+      s.onerror=()=>{ s.remove(); tryAt(i+1) }; document.head.append(s); };
+    tryAt(0);
+  });
   return Vloading;
 }
 function prepVehicles(X){

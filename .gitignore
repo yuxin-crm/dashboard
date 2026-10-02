@@ -1,0 +1,4 @@
+# 客戶個資資料檔只放在分享包，絕不可進公開儲存庫
+app/data/vehicles.js
+*.xlsx
+*.csv
