@@ -88,7 +88,8 @@ function routeParam(){const m=location.hash.match(/^#\/[\w-]+\/(.+)$/); return m
 function buildNav(){
   let n=0;
   document.getElementById('nav').innerHTML=ROUTES.map(r=>r.g?`<div class="nav-g">${r.g}</div>`:`<a class="nav-a" href="#/${r.id}" data-id="${r.id}"><span class="no">${++n}</span>${r.t}</a>`).join('');
-  document.getElementById('sideFoot').innerHTML='來源：UIO客戶數據平台.xlsx（總表為主）<br>54,129 台車・128,136 張工單';
+  document.getElementById('sideFoot').innerHTML='來源：UIO客戶數據平台.xlsx（總表為主）<br>'+fmt(D.all[0])+' 台車・資料基準日 '+D.asOf;
+  document.getElementById('topMeta').textContent='資料基準日 '+D.asOf+'｜工單 '+months[0]+'～'+months[months.length-1];
   const sel=document.getElementById('brSel');
   sel.innerHTML='<option value="">全公司</option>'+branchNames.map(b=>`<option value="${esc(b)}">${esc(b)}${OTHER.has(b)?'（其他）':''}</option>`).join('');
   sel.onchange=()=>setBranch(sel.value);
@@ -160,7 +161,7 @@ function table(parent,{cols,rows,sort,dir=-1,onRow,search,name,rank,focus}){
     const head=cols.map(c=>c.t); const lines=[head.join(',')];
     box._rows.forEach(r=>lines.push(cols.map(c=>{let x=val(r,c); if(M[c.k]&&M[c.k].rate) x=x.toFixed(1); else if(typeof x==='number') x=Math.round(x); x=String(x); return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x}).join(',')));
     const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${name}_${scopeName()}_2026-10-02.csv`; document.body.append(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${name}_${scopeName()}_${D.asOf}.csv`; document.body.append(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);
   };
   draw(); return box;
 }
@@ -293,7 +294,7 @@ function pageVehicles(main){
   const g=el('<div class="grid2"></div>'); main.append(g);
   const a=el('<section class="panel"><div class="panel-h"><h2>車齡分布</h2><p>'+scopeName()+'</p></div></section>'); g.append(a);
   hbars(a,[['0～3 年','age0_3'],['4～6 年','age4_6'],['7～10 年','age7_10'],['11 年以上','age11']].map(([l,k])=>({l,n:v(r,k),txt:fmt(v(r,k))+'（'+p1(pct(v(r,k),v(r,'veh')-v(r,'w_pend')))+'）'})));
-  const b=el('<section class="panel"><div class="panel-h"><h2>車型代碼前 12 名</h2><p>全公司；車系對照表待提供</p></div></section>'); g.append(b);
+  const b=el('<section class="panel"><div class="panel-h"><h2>車型分類</h2><p>全公司；依 2418 確認的車型分類規則，清單外為他牌</p></div></section>'); g.append(b);
   const ms=Object.entries(D.models); hbars(b,ms.map(([k,n])=>({l:k,n,txt:fmt(n)})));
   const c=panel(main,'客戶類型',scopeName());
   cards(c,[{l:'個人車主',val:fmt(v(r,'veh')-v(r,'company')),sub:p1(pct(v(r,'veh')-v(r,'company'),v(r,'veh')))},{l:'公司法人',val:fmt(v(r,'company')),sub:p1(pct(v(r,'company'),v(r,'veh')))},{l:'高價值車主',val:fmt(v(r,'hv')),sub:'12 個月工單 ≥ NT$30,000'},{l:'每車年消費',val:'NT$'+fmt(M.avg_rev.f(r)),sub:'12 個月工單金額 ÷ 車輛數'}]);
@@ -403,7 +404,7 @@ function loadVehicles(){
 function prepVehicles(X){
   const C={}; X.cols.forEach((c,i)=>C[c]=i);
   const num=s=>s===''?NaN:+s;
-  const rows=X.rows.map(r=>({r,plate:r[0],pn:r[0].toUpperCase().replace(/[-\s]/g,''),owner:r[1],mob:r[3],age:num(r[C['車齡（年）']]),km:num(r[C['最後有效里程']]),w:r[C['系統保固狀態']],br:r[C['服務廠']],adv:r[C['服務專員']],sales:r[C['關懷業務']],model:r[C['車型']],days:num(r[C['距上次回廠天數']]),spend:num(r[C['12個月工單金額']])||0}));
+  const rows=X.rows.map(r=>({r,plate:r[0],pn:r[0].toUpperCase().replace(/[-\s]/g,''),owner:r[1],mob:r[3],age:num(r[C['車齡（年）']]),km:num(r[C['最後有效里程']]),w:r[C['系統保固狀態']],br:r[C['服務廠']],adv:r[C['服務專員']],sales:r[C['關懷業務']],model:r[C['車型分類']]||r[C['車型']],rawModel:r[C['車型']],days:num(r[C['距上次回廠天數']]),spend:num(r[C['12個月工單金額']])||0}));
   const owners={}; rows.forEach(x=>{const k=x.owner+'|'+(x.mob||x.plate); (owners[k]=owners[k]||[]).push(x); x.ok=k});
   const count=f=>{const m={}; rows.forEach(x=>{const k=f(x); if(k) m[k]=(m[k]||0)+1}); return Object.entries(m).sort((a,b)=>b[1]-a[1])};
   return {asOf:X.asOf,C,rows,owners,models:count(x=>x.model),brs:count(x=>x.br),advs:count(x=>x.adv),saless:count(x=>x.sales),ws:count(x=>x.w)};
@@ -435,7 +436,7 @@ function lookupSearch(holder){
   holder.append(el('<p class="note">🔒 本頁含客戶個資，僅供公司內部使用；手機號碼預設遮罩，點「顯示」才會看到完整號碼。資料基準日 '+esc(V.asOf)+'。</p>'));
   const f=el(`<section class="panel"><div class="panel-h"><h2>查詢與篩選</h2><button type="button" class="btn" id="lf-reset">清除條件</button></div>
     <div class="filters">
-      <label class="f-q">牌照號碼或車主<input id="lf-q" type="search" placeholder="例：ABC-1234、ABC1234、1234、王小明" autocomplete="off"></label>
+      <label class="f-q">牌照號碼、車主或車型代碼<input id="lf-q" type="search" placeholder="例：ABC-1234、1234、王小明、P15FVA" autocomplete="off"></label>
       <label>車型<select id="lf-model"></select></label>
       <label>車齡<select id="lf-age"></select></label>
       <label>里程<select id="lf-km"></select></label>
@@ -448,7 +449,7 @@ function lookupSearch(holder){
   holder.append(f);
   const $=id=>f.querySelector('#'+id);
   // 下拉選單只列出「在其他條件下仍有車」的選項，數字是套用其他條件後的台數
-  const NONE='__none', FACET={model:['全部車型','未填車型'],w:['全部保固狀態',''],br:['全部服務廠','無服務廠'],adv:['全部服務專員','無服務專員'],sales:['全部業務','未指派業務']};
+  const NONE='__none', FACET={model:['全部車型分類','未填車型'],w:['全部保固狀態',''],br:['全部服務廠','無服務廠'],adv:['全部服務專員','無服務專員'],sales:['全部業務','未指派業務']};
   function refreshOpts(){
     Object.keys(FACET).forEach(k=>{
       const m={}; let none=0; filtered(k).forEach(x=>{const v=x[k]; if(v) m[v]=(m[v]||0)+1; else none++});
@@ -474,7 +475,7 @@ function lookupSearch(holder){
     const qq=LF.q.toUpperCase().replace(/[-\s]/g,''); const ag=AGE.find(a=>a[0]===LF.age), kb=KMB.find(a=>a[0]===LF.km), hb=LF.habit?habitFn(LF.habit):null;
     const eq=k=>x=>except===k||!LF[k]||(LF[k]===NONE?!x[k]:x[k]===LF[k]);
     const fm=eq('model'),fw=eq('w'),fb=eq('br'),fa=eq('adv'),fs=eq('sales');
-    return V.rows.filter(x=>(!qq||x.pn.includes(qq)||x.owner.toUpperCase().includes(qq))&&fm(x)&&(!ag||ag[2](x))&&(!kb||kb[2](x))&&fw(x)&&fb(x)&&fa(x)&&fs(x)&&(!hb||hb(x)));
+    return V.rows.filter(x=>(!qq||x.pn.includes(qq)||x.owner.toUpperCase().includes(qq)||(x.rawModel||'').toUpperCase().replace(/[-\s]/g,'').includes(qq))&&fm(x)&&(!ag||ag[2](x))&&(!kb||kb[2](x))&&fw(x)&&fb(x)&&fa(x)&&fs(x)&&(!hb||hb(x)));
   }
   function draw(){
     refreshOpts(); const rs=filtered(); const c=COLS.find(c=>c[0]===LF.sort)||COLS[10];
@@ -509,8 +510,8 @@ function lookupDetail(holder,plate){
   grid.append(o);
   const wDiff=(g('新車保固到期（原 Excel）')==='未過期')!==(['保固內','年限即將到期','里程即將到期','即將到期（年限＋里程）'].includes(g('系統保固狀態')));
   const vcard=el(`<section class="panel"><div class="panel-h"><h2>車輛基本資料</h2><p>${esc(x.plate)}</p></div>
-    <div class="who"><div class="avatar car">🚗</div><div><div class="who-n">${esc(x.plate)}</div><div class="note">${dash(g('車型'))}｜車齡 ${dash(g('車齡'))}</div></div></div>
-    ${kv([['牌照號碼',esc(x.plate)],['車型',dash(g('車型'))],['車齡',dash(g('車齡'))+(g('車齡（年）')?`（${g('車齡（年）')} 年）`:'')],['領牌日',dash(g('領牌日'))],['最後有效里程',g('最後有效里程')?fmt(+g('最後有效里程'))+' km':'—'],['系統保固狀態',wPill(g('系統保固狀態'))],['保固到期日（年限）',dash(g('保固到期日'))],['保固說明',dash(g('保固說明'))],['原 Excel 新車保固到期',dash(g('新車保固到期（原 Excel）'))+(wDiff?'<span class="pill r">與系統判定不同</span>':'')],['服務廠',dash(g('服務廠'))],['服務專員',dash(g('服務專員'))],['指定服專',dash(g('指定服專'))]])}</section>`);
+    <div class="who"><div class="avatar car">🚗</div><div><div class="who-n">${esc(x.plate)}</div><div class="note">${dash(g('車型分類'))}（${dash(g('車型'))}）｜車齡 ${dash(g('車齡'))}</div></div></div>
+    ${kv([['牌照號碼',esc(x.plate)],['車型分類',dash(g('車型分類'))],['車型代碼',dash(g('車型'))],['車齡',dash(g('車齡'))+(g('車齡（年）')?`（${g('車齡（年）')} 年）`:'')],['領牌日',dash(g('領牌日'))],['最後有效里程',g('最後有效里程')?fmt(+g('最後有效里程'))+' km':'—'],['系統保固狀態',wPill(g('系統保固狀態'))],['保固到期日（年限）',dash(g('保固到期日'))],['保固說明',dash(g('保固說明'))],['原 Excel 新車保固到期',dash(g('新車保固到期（原 Excel）'))+(wDiff?'<span class="pill r">與系統判定不同</span>':'')],['服務廠',dash(g('服務廠'))],['服務專員',dash(g('服務專員'))],['指定服專',dash(g('指定服專'))]])}</section>`);
   grid.append(vcard);
   const s=el(`<section class="panel"><div class="panel-h"><h2>回廠與消費</h2><p>12 個月＝2025-08-18～2026-08-18 工單</p></div>${kv([
     ['最後定保日期',dash(g('最後定保日期'))],['上次定保里程',g('上次定保里程')?fmt(+g('上次定保里程'))+' km':'—'],['前一工單日期',dash(g('前一工單日期'))],['距上次回廠',g('距上次回廠天數')?fmt(+g('距上次回廠天數'))+' 天':'—'],['一年回廠定保次數',dash(g('一年回廠定保次數'))],['定保頻率',dash(g('定保頻率'))],['近 3 個月消費',g('近3個月消費')?'NT$'+fmt(+g('近3個月消費')):'—'],['美容一年消費',g('美容一年消費')?'NT$'+fmt(+g('美容一年消費'))+'（'+esc(g('美容消費等級'))+'）':'—'],['輪胎',g('輪胎年更換次數')?`一年換 ${esc(g('輪胎年更換次數'))} 次，最後 ${dash(g('輪胎最後更換'))}`:'一年內未更換'],['電瓶',g('電瓶年更換次數')?`一年換 ${esc(g('電瓶年更換次數'))} 次，最後 ${dash(g('電瓶最後更換'))}`:'一年內未更換'],['12 個月工單',`${fmt(+g('12個月工單數'))} 張、NT$${fmt(+g('12個月工單金額'))}`],['其中定保／輪胎／電瓶／美容',`NT$${fmt(+g('12個月定保金額'))}／${fmt(+g('12個月輪胎金額'))}／${fmt(+g('12個月電瓶金額'))}／${fmt(+g('12個月美容金額'))}`]])}</section>`);
