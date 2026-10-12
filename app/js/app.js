@@ -71,6 +71,9 @@ const ROUTES=[
   {id:'warranty',t:'保固管理',p:pageWarranty},
   {id:'retention',t:'回廠與保養',p:pageRetention},
   {id:'vehicles',t:'車齡與車型',p:pageVehicles},
+  {g:'零件與商機'},
+  {id:'parts',t:'零件更換',p:pageParts},
+  {id:'opps',t:'商機規劃',p:pageOpps},
   {g:'營收'},
   {id:'revenue',t:'工單營收',p:pageRevenue},
   {g:'服務廠與人員'},
@@ -369,6 +372,75 @@ function pageQuality(main){
     table(t,{name:'資料品質_服務廠',rows:branchRows(),sort:'mob_rate',dir:1,cols:[nameCol,{k:'veh',t:'車輛'},{k:'mob_rate',t:'手機有效'},{k:'km_rate',t:'里程可用'},{k:'birth_rate',t:'生日'},{k:'vin_rate',t:'VIN'},{k:'email_rate',t:'Email'},{k:'consent_rate',t:'個資同意'},{k:'w_pend',t:'無領牌日'}],onRow:x=>setBranch(x.name)});}
 }
 
+// ---------- 零件更換、商機規劃（資料：data/insights.js，只有彙總數字與員工姓名） ----------
+const I=window.YX_INSIGHTS||null;
+function needI(main){ if(I) return true; main.append(el('<section class="panel"><p style="margin:0">尚未產生零件與商機資料（data/insights.js），請執行 tools/regenerate-all.ps1。</p></section>')); return false; }
+const ruleOf=c=>(I&&I.rules.find(r=>r.code===c))||{name:c,desc:'',price:null};
+const sum3=o=>Object.values(o||{}).reduce((a,x)=>[a[0]+x[0],a[1]+x[1],a[2]+x[2]],[0,0,0]);
+let partSel=null;
+
+function pageParts(main){
+  head(main,'零件更換','各零件的更換紀錄與近 12 個月更換台數；來源：總表「最後一次更換時間」與「年度施作次數」欄');
+  if(!needI(main)) return;
+  const br=state.branch, P=br?(I.parts.branches[br]||{}):I.parts.all, S=br?(I.services.branches[br]||{}):I.services.all, veh=v(cur(),'veh');
+  const how=panel(main,'資料範圍','','howto');
+  how.innerHTML='<ol><li>輪胎、電瓶、空氣芯、空調濾網、雨刷、來令片、皮帶、火星塞：只有 <b>2025-08-18～2026-08-18</b> 的更換紀錄。</li><li>水箱、三角架、引擎腳、碟盤、避震器等其他零件：紀錄從 <b>2024-01</b> 起。</li><li>「沒有紀錄」代表資料期間內沒有在裕信更換，不代表從未更換。</li></ol>';
+  const g=n=>P[n]||[0,0], per=n=>veh?g(n)[1]/veh*100:0;
+  const names=I.parts.names.slice().sort((a,b)=>g(b)[1]-g(a)[1]);
+  cards(main,names.slice(0,4).map(n=>({l:n+'（近 12 個月）',val:fmt(g(n)[1]),sub:'每百台 '+per(n).toFixed(1)+' 台'})));
+  const t=panel(main,'各零件更換台數',scopeName()+'；點列看各服務廠比較');
+  table(t,{name:'零件更換',rank:1,rows:names.map(n=>({name:n})),sort:'l12',cols:[
+    {k:'name',t:'零件',l2:1,get:r=>r.name,text:r=>esc(r.name)},
+    {k:'l12',t:'近 12 個月更換台數',get:r=>g(r.name)[1],text:r=>fmt(g(r.name)[1])},
+    {k:'per',t:'每百台',get:r=>per(r.name),text:r=>per(r.name).toFixed(1)},
+    {k:'rec',t:'資料期間內有紀錄台數',get:r=>g(r.name)[0],text:r=>fmt(g(r.name)[0])}],
+    onRow:r=>{partSel=r.name; render()}});
+  const ps=partSel&&I.parts.names.includes(partSel)?partSel:names[0];
+  const b=panel(main,'各服務廠比較：'+esc(ps),'近 12 個月更換台數與每百台更換數；點長條切換到該廠');
+  hbars(b,realBranches.map(x=>{const a=(I.parts.branches[x]||{})[ps]||[0,0], vv=v(D.branches[x],'veh'), pr=vv?a[1]/vv*100:0; return {l:x,n:pr,txt:fmt(a[1])+' 台／每百台 '+pr.toFixed(1),c:x===br?'var(--s2)':'var(--s1)',go:()=>setBranch(x)}}).sort((p,q)=>q.n-p.n));
+  const sv=panel(main,'年度服務施作','各年有施作的車輛數；「待回購」＝2025 年有施作、2026 年尚未施作');
+  table(sv,{name:'年度服務',rows:I.services.names.map(n=>({name:n,a:S[n]||[0,0,0,0]})),sort:'renew',cols:[
+    {k:'name',t:'服務項目',l2:1,get:r=>r.name,text:r=>esc(r.name)},
+    {k:'y24',t:'2024',get:r=>r.a[0],text:r=>fmt(r.a[0])},{k:'y25',t:'2025',get:r=>r.a[1],text:r=>fmt(r.a[1])},{k:'y26',t:'2026',get:r=>r.a[2],text:r=>fmt(r.a[2])},
+    {k:'renew',t:'待回購',get:r=>r.a[3],text:r=>fmt(r.a[3])}]});
+}
+
+function pageOpps(main){
+  head(main,'商機規劃','依規則從每台車的保養、保固、零件與年度服務紀錄找出商機；規則與單價為預設值，待 2418 確認');
+  if(!needI(main)) return;
+  const br=state.branch, O=br?(I.opps.branches[br]||{}):I.opps.all, car=I.cars[br?'br|'+br:'all']||[0,0,0], tot=sum3(O);
+  cards(main,[
+    {cls:'info',l:'有商機的車輛',val:fmt(car[1]),sub:'占 '+p1(pct(car[1],car[0]))+'（共 '+fmt(car[0])+' 台）'},
+    {cls:'good',l:'可聯絡且有商機',val:fmt(car[2]),sub:'同意個資、非暫停聯絡、有手機'},
+    {cls:'warn',l:'商機筆數',val:fmt(tot[0]),sub:'其中可聯絡 '+fmt(tot[1])+' 筆'},
+    {cls:'crit',l:'潛在金額',val:'NT$'+money(tot[2]),sub:'單價 × 筆數，未乘成交率'}]);
+  const how=panel(main,'怎麼讀','','howto');
+  how.innerHTML='<ol><li>這是<b>規則判斷</b>，不是 AI 預測；金額是「單價 × 筆數」的潛在值，沒有乘上成交率。</li><li>零件類商機是「近 12 個月未在裕信更換＋車齡／里程達門檻」的推估，聯絡前請先確認車況。</li><li>單價空白的規則自動取工單中位數；標示「待提供」的年度服務還沒有價格，金額以 0 計。</li><li>點商機列可直接到「車輛查詢」看是哪些車。</li></ol>';
+  const t=panel(main,'各類商機',scopeName()+'；點列看車輛名單');
+  table(t,{name:'商機規劃',rank:1,rows:I.rules.map(r=>{const a=O[r.code]||[0,0,0]; return {name:r.name,code:r.code,n:a[0],c:a[1],val:a[2],price:r.price,desc:r.desc}}),sort:'val',cols:[
+    {k:'name',t:'商機',l2:1,get:r=>r.name,text:r=>esc(r.name)},
+    {k:'n',t:'車輛數',get:r=>r.n,text:r=>fmt(r.n)},{k:'c',t:'可聯絡',get:r=>r.c,text:r=>fmt(r.c)},
+    {k:'price',t:'單價',get:r=>r.price||0,text:r=>r.price==null?'<span class="pill y">待提供</span>':'NT$'+fmt(r.price)},
+    {k:'val',t:'潛在金額',get:r=>r.val,text:r=>'NT$'+fmt(r.val)},
+    {k:'desc',t:'判斷規則',l2:1,get:r=>r.desc,text:r=>'<span class="note">'+esc(r.desc)+'</span>'}],
+    onRow:r=>{LF.opp=r.code; LF.page=0; LF.br=br||''; location.hash='#/lookup'}});
+  if(!br){
+    const b=panel(main,'各服務廠商機','點列切換到該廠');
+    table(b,{name:'商機_服務廠',rank:1,rows:branchNames.map(x=>{const o=I.opps.branches[x]||{}, cs=I.cars['br|'+x]||[0,0,0], s=sum3(o), top=Object.entries(o).sort((p,q)=>q[1][2]-p[1][2])[0]; return {name:x,other:OTHER.has(x),cars:cs[0],hc:cs[1],hcc:cs[2],n:s[0],val:s[2],top:top?ruleOf(top[0]).name:'—'}}),sort:'val',cols:[nameCol,
+      {k:'cars',t:'車輛',get:r=>r.cars,text:r=>fmt(r.cars)},{k:'hc',t:'有商機車輛',get:r=>r.hc,text:r=>fmt(r.hc)},{k:'hcc',t:'可聯絡且有商機',get:r=>r.hcc,text:r=>fmt(r.hcc)},
+      {k:'n',t:'商機筆數',get:r=>r.n,text:r=>fmt(r.n)},{k:'val',t:'潛在金額',get:r=>r.val,text:r=>money(r.val)},{k:'top',t:'金額最高的商機',l2:1,get:r=>r.top,text:r=>esc(r.top)}],
+      onRow:r=>setBranch(r.name)});
+  }
+  const g=el('<div class="grid2"></div>'); main.append(g);
+  [['advisors','服務專員','adv|'],['sales','關懷業務','sales|']].forEach(([kind,label,prefix])=>{
+    const p=el(`<section class="panel"><div class="panel-h"><h2>${label}手上的商機</h2><p>全公司；依車輛查詢的${label}名單</p></div></section>`); g.append(p);
+    const src=I.opps[kind]||{};
+    table(p,{name:'商機_'+label,rank:1,search:1,rows:Object.keys(src).map(k=>{const s=sum3(src[k]), cs=I.cars[prefix+k]||[0,0,0]; return {name:k,other:['其他服專','未指派','其他業務','無指派'].includes(k),hc:cs[1],n:s[0],c:s[1],val:s[2]}}),sort:'val',cols:[
+      {k:'name',t:label,l2:1,get:r=>r.name,text:r=>esc(r.name)},{k:'hc',t:'有商機車輛',get:r=>r.hc,text:r=>fmt(r.hc)},
+      {k:'n',t:'商機筆數',get:r=>r.n,text:r=>fmt(r.n)},{k:'c',t:'可聯絡',get:r=>r.c,text:r=>fmt(r.c)},{k:'val',t:'潛在金額',get:r=>r.val,text:r=>money(r.val)}]});
+  });
+}
+
 function pageAbout(main){
   head(main,'資料說明','資料來源、指標定義與已確認的規則');
   const a=panel(main,'資料來源');
@@ -386,7 +458,7 @@ function pageAbout(main){
 const canPrivate=location.protocol==='file:'||location.hostname==='localhost'||location.hostname==='127.0.0.1';
 const PRIVATE_SRCS=canPrivate?['data/vehicles.js','../../yuxin-crm/private/vehicles.js','data/vehicles-deid.js']:['data/vehicles-deid.js'];
 let V=null, Vloading=null;
-const LF={q:'',model:'',age:'',km:'',w:'',br:'',adv:'',sales:'',habit:'',sort:'spend',dir:-1,page:0};
+const LF={q:'',model:'',age:'',km:'',w:'',br:'',adv:'',sales:'',habit:'',opp:'',sort:'spend',dir:-1,page:0};
 function loadVehicles(){
   if(V) return Promise.resolve(V);
   if(Vloading) return Vloading;
@@ -399,10 +471,21 @@ function loadVehicles(){
   });
   return Vloading;
 }
+// 商機原因由規則組合（資料只存代碼，檔案較小）
+function oppReason(o,x){
+  const ru=o.rule||{};
+  if(o.code==='MAINT'){ const d=+o.param; return isNaN(d)?'保養到期':d<0?'保養逾期 '+fmt(-d)+' 天':'保養 '+fmt(d)+' 天內到期'; }
+  if(o.code==='HEALTH') return '原廠保固'+(x.w||'即將到期');
+  if(o.code==='RECALL') return '已 '+fmt(x.days)+' 天未回廠';
+  if(o.code.startsWith('RN_')) return '2025 年有施作'+(ru.part||'')+'，2026 年尚未施作';
+  const a=['近 12 個月未在裕信更換'+(ru.part||o.name)]; if(ru.minAge>0&&!isNaN(x.age)) a.push('車齡 '+x.age.toFixed(1)+' 年'); if(ru.minKm>0&&!isNaN(x.km)) a.push('里程 '+fmt(x.km)+' km');
+  if(['WIPER','ACF','AIRF'].includes(o.code)) a.push('可於保養時一併建議');
+  return a.join('、');
+}
 function prepVehicles(X){
   const C={}; X.cols.forEach((c,i)=>C[c]=i);
   const num=s=>s===''?NaN:+s;
-  const rows=X.rows.map(r=>({r,plate:r[0],pn:r[0].toUpperCase().replace(/[-\s]/g,''),owner:r[1],mob:r[3],age:num(r[C['車齡（年）']]),km:num(r[C['最後有效里程']]),w:r[C['系統保固狀態']],br:r[C['服務廠']],adv:r[C['服務專員']],sales:r[C['關懷業務']],model:r[C['車型分類']]||r[C['車型']],rawModel:r[C['車型']],days:num(r[C['距上次回廠天數']]),spend:num(r[C['12個月工單金額']])||0}));
+  const rows=X.rows.map(r=>({r,plate:r[0],pn:r[0].toUpperCase().replace(/[-\s]/g,''),owner:r[1],mob:r[3],age:num(r[C['車齡（年）']]),km:num(r[C['最後有效里程']]),w:r[C['系統保固狀態']],br:r[C['服務廠']],adv:r[C['服務專員']],sales:r[C['關懷業務']],model:r[C['車型分類']]||r[C['車型']],rawModel:r[C['車型']],days:num(r[C['距上次回廠天數']]),spend:num(r[C['12個月工單金額']])||0,opps:C['商機']!==undefined&&r[C['商機']]?r[C['商機']].split(';').map(s=>{const [code,param]=s.split(':'), ru=ruleOf(code); return {code,name:ru.name,amt:ru.price||0,param,rule:ru}}):[],oppAmt:C['商機金額']!==undefined?num(r[C['商機金額']])||0:0}));
   const owners={}; rows.forEach(x=>{const k=x.owner+'|'+(x.mob||x.plate); (owners[k]=owners[k]||[]).push(x); x.ok=k});
   const count=f=>{const m={}; rows.forEach(x=>{const k=f(x); if(k) m[k]=(m[k]||0)+1}); return Object.entries(m).sort((a,b)=>b[1]-a[1])};
   return {asOf:X.asOf,deid:!!X.deid,C,rows,owners,models:count(x=>x.model),brs:count(x=>x.br),advs:count(x=>x.adv),saless:count(x=>x.sales),ws:count(x=>x.w)};
@@ -444,6 +527,7 @@ function lookupSearch(holder){
       <label>服務專員<select id="lf-adv"></select></label>
       <label>關懷業務<select id="lf-sales"></select></label>
       <label>消費習慣<select id="lf-habit"></select></label>
+      <label>商機<select id="lf-opp"></select></label>
     </div><div class="lf-count" id="lf-count"></div></section>`);
   holder.append(f);
   const $=id=>f.querySelector('#'+id);
@@ -457,33 +541,38 @@ function lookupSearch(holder){
       s.innerHTML=`<option value="">${FACET[k][0]}</option>`+list.map(([v,n])=>`<option value="${esc(v)}">${esc(v)}（${fmt(n)}）</option>`).join('')+(none&&FACET[k][1]?`<option value="${NONE}">${FACET[k][1]}（${fmt(none)}）</option>`:'');
       s.value=LF[k];
     });
+    const om={}; let on=0; filtered('opp').forEach(x=>{ if(!x.opps.length) on++; x.opps.forEach(o=>{ om[o.code]=om[o.code]||[o.name,0]; om[o.code][1]++; }); });
+    const os=$('lf-opp'), ol=Object.entries(om).sort((a,b)=>b[1][1]-a[1][1]);
+    os.innerHTML='<option value="">全部（含無商機）</option>'+ol.map(([c,[n,k]])=>`<option value="${esc(c)}">${esc(n)}（${fmt(k)}）</option>`).join('')+(on?`<option value="${NONE}">無商機（${fmt(on)}）</option>`:'');
+    os.value=LF.opp; if(os.value!==LF.opp) LF.opp='';
   }
   $('lf-age').innerHTML='<option value="">全部車齡</option>'+AGE.map(a=>`<option value="${a[0]}">${a[1]}</option>`).join('');
   $('lf-km').innerHTML='<option value="">全部里程</option>'+KMB.map(a=>`<option value="${a[0]}">${a[1]}</option>`).join('');
   $('lf-habit').innerHTML='<option value="">全部</option>'+HABIT.map(g=>`<optgroup label="${g.g}">${g.o.map(o=>`<option value="${o[0]}">${o[1]}</option>`).join('')}</optgroup>`).join('');
   if(!LF.br&&state.branch&&V.brs.some(b=>b[0]===state.branch)) LF.br=state.branch;
-  ['model','age','km','w','br','adv','sales','habit'].forEach(k=>{ const s=$('lf-'+k); s.value=LF[k]; s.onchange=()=>{LF[k]=s.value; LF.page=0; draw()}; });
+  ['model','age','km','w','br','adv','sales','habit','opp'].forEach(k=>{ const s=$('lf-'+k); s.value=LF[k]; s.onchange=()=>{LF[k]=s.value; LF.page=0; draw()}; });
   const q=$('lf-q'); q.value=LF.q; let qt; q.oninput=()=>{clearTimeout(qt); qt=setTimeout(()=>{LF.q=q.value.trim(); LF.page=0; draw()},200)};
   q.onkeydown=e=>{ if(e.key==='Enter'){ const r=filtered(); if(r.length===1) location.hash='#/lookup/'+encodeURIComponent(r[0].plate); }};
-  $('lf-reset').onclick=()=>{Object.assign(LF,{q:'',model:'',age:'',km:'',w:'',br:'',adv:'',sales:'',habit:'',page:0}); lookupSearchRedraw()};
+  $('lf-reset').onclick=()=>{Object.assign(LF,{q:'',model:'',age:'',km:'',w:'',br:'',adv:'',sales:'',habit:'',opp:'',page:0}); lookupSearchRedraw()};
   const res=el('<section class="panel"><div class="panel-h"><h2>查詢結果</h2><p>點列看車主與車輛基本資料</p></div><div class="tbl-wrap"><table><thead></thead><tbody></tbody></table></div><div class="pager"></div></section>');
   holder.append(res);
-  const COLS=[['plate',V.deid?'車輛編碼':'牌照號碼',x=>x.plate,1],...(V.deid?[]:[['owner','車主',x=>x.owner,1]]),['model','車型',x=>x.model,1],['age','車齡',x=>x.age],['km','最後里程',x=>x.km],['w','保固狀態',x=>x.w,1],['br','服務廠',x=>x.br,1],['adv','服務專員',x=>x.adv,1],['sales','關懷業務',x=>x.sales,1],['days','距上次回廠',x=>x.days],['spend','12 個月金額',x=>x.spend]];
+  const COLS=[['plate',V.deid?'車輛編碼':'牌照號碼',x=>x.plate,1],...(V.deid?[]:[['owner','車主',x=>x.owner,1]]),['model','車型',x=>x.model,1],['age','車齡',x=>x.age],['km','最後里程',x=>x.km],['w','保固狀態',x=>x.w,1],['br','服務廠',x=>x.br,1],['adv','服務專員',x=>x.adv,1],['sales','關懷業務',x=>x.sales,1],['opp','商機',x=>x.oppAmt],['days','距上次回廠',x=>x.days],['spend','12 個月金額',x=>x.spend]];
   // except：計算某個下拉選單的選項時，不套用它自己的條件
   function filtered(except){
     const qq=LF.q.toUpperCase().replace(/[-\s]/g,''); const ag=AGE.find(a=>a[0]===LF.age), kb=KMB.find(a=>a[0]===LF.km), hb=LF.habit?habitFn(LF.habit):null;
     const eq=k=>x=>except===k||!LF[k]||(LF[k]===NONE?!x[k]:x[k]===LF[k]);
     const fm=eq('model'),fw=eq('w'),fb=eq('br'),fa=eq('adv'),fs=eq('sales');
-    return V.rows.filter(x=>(!qq||x.pn.includes(qq)||x.owner.toUpperCase().includes(qq)||(x.rawModel||'').toUpperCase().replace(/[-\s]/g,'').includes(qq))&&fm(x)&&(!ag||ag[2](x))&&(!kb||kb[2](x))&&fw(x)&&fb(x)&&fa(x)&&fs(x)&&(!hb||hb(x)));
+    const fo=x=>except==='opp'||!LF.opp||(LF.opp===NONE?!x.opps.length:x.opps.some(o=>o.code===LF.opp));
+    return V.rows.filter(x=>(!qq||x.pn.includes(qq)||x.owner.toUpperCase().includes(qq)||(x.rawModel||'').toUpperCase().replace(/[-\s]/g,'').includes(qq))&&fm(x)&&(!ag||ag[2](x))&&(!kb||kb[2](x))&&fw(x)&&fb(x)&&fa(x)&&fs(x)&&fo(x)&&(!hb||hb(x)));
   }
   function draw(){
     refreshOpts(); const rs=filtered(); const c=COLS.find(c=>c[0]===LF.sort)||COLS[COLS.length-1];
     rs.sort((a,b)=>{let x=c[2](a),y=c[2](b); if(c[3]){x=x||'';y=y||''; return LF.dir*x.localeCompare(y,'zh-Hant')} x=isNaN(x)?-Infinity:x; y=isNaN(y)?-Infinity:y; return LF.dir*(x-y)});
     const owners=new Set(rs.map(x=>x.ok)).size, spend=rs.reduce((a,x)=>a+x.spend,0);
-    f.querySelector('#lf-count').innerHTML=`符合 <b class="num">${fmt(rs.length)}</b> 台車・<b class="num">${fmt(owners)}</b> 位車主・12 個月工單金額合計 <b class="num">NT$${fmt(spend)}</b>`;
+    f.querySelector('#lf-count').innerHTML=`符合 <b class="num">${fmt(rs.length)}</b> 台車・<b class="num">${fmt(owners)}</b> 位車主・12 個月工單金額合計 <b class="num">NT$${fmt(spend)}</b>・有商機 <b class="num">${fmt(rs.filter(x=>x.opps.length).length)}</b> 台、潛在金額 <b class="num">NT$${fmt(rs.reduce((a,x)=>a+x.oppAmt,0))}</b>`;
     const per=50, pages=Math.max(1,Math.ceil(rs.length/per)); LF.page=Math.min(LF.page,pages-1); const slice=rs.slice(LF.page*per,LF.page*per+per);
     res.querySelector('thead').innerHTML='<tr>'+COLS.map(c=>`<th scope="col" class="${c[3]?'l':''}" data-k="${c[0]}" ${c[0]===LF.sort?`aria-sort="${LF.dir<0?'descending':'ascending'}"`:''}>${c[1]}${c[0]===LF.sort?(LF.dir<0?' ▼':' ▲'):' ⇅'}</th>`).join('')+'</tr>';
-    res.querySelector('tbody').innerHTML=slice.map(x=>`<tr class="click" data-p="${esc(x.plate)}"><td class="l"><b>${esc(x.plate)}</b></td>${V.deid?'':`<td class="l">${esc(x.owner)}</td>`}<td class="l">${esc(x.model||'—')}</td><td class="num">${isNaN(x.age)?'—':x.age.toFixed(1)+' 年'}</td><td class="num">${isNaN(x.km)?'—':fmt(x.km)}</td><td class="l">${wPill(x.w)}</td><td class="l">${esc(x.br||'—')}</td><td class="l">${esc(x.adv||'—')}</td><td class="l">${x.sales?esc(x.sales):'<span class="note">未指派業務</span>'}</td><td class="num">${isNaN(x.days)?'—':fmt(x.days)+' 天'}</td><td class="num">${x.spend?'NT$'+fmt(x.spend):'—'}</td></tr>`).join('')||`<tr><td class="empty" colspan="${COLS.length}">沒有符合的車輛</td></tr>`;
+    res.querySelector('tbody').innerHTML=slice.map(x=>`<tr class="click" data-p="${esc(x.plate)}"><td class="l"><b>${esc(x.plate)}</b></td>${V.deid?'':`<td class="l">${esc(x.owner)}</td>`}<td class="l">${esc(x.model||'—')}</td><td class="num">${isNaN(x.age)?'—':x.age.toFixed(1)+' 年'}</td><td class="num">${isNaN(x.km)?'—':fmt(x.km)}</td><td class="l">${wPill(x.w)}</td><td class="l">${esc(x.br||'—')}</td><td class="l">${esc(x.adv||'—')}</td><td class="l">${x.sales?esc(x.sales):'<span class="note">未指派業務</span>'}</td><td class="num">${x.opps.length?x.opps.length+' 項｜NT$'+fmt(x.oppAmt):'—'}</td><td class="num">${isNaN(x.days)?'—':fmt(x.days)+' 天'}</td><td class="num">${x.spend?'NT$'+fmt(x.spend):'—'}</td></tr>`).join('')||`<tr><td class="empty" colspan="${COLS.length}">沒有符合的車輛</td></tr>`;
     res.querySelector('.pager').innerHTML=`<span class="note">第 ${LF.page+1} / ${pages} 頁（每頁 50 筆）</span><button type="button" class="btn" data-pg="-1" ${LF.page?'':'disabled'}>上一頁</button><button type="button" class="btn" data-pg="1" ${LF.page<pages-1?'':'disabled'}>下一頁</button>`;
     res.querySelectorAll('[data-pg]').forEach(b=>b.onclick=()=>{LF.page+=+b.dataset.pg; draw(); res.scrollIntoView({block:'start'})});
     res.querySelectorAll('th[data-k]').forEach(th=>th.onclick=()=>{const k=th.dataset.k; if(k===LF.sort) LF.dir*=-1; else {LF.sort=k; LF.dir=-1} draw()});
@@ -519,7 +608,13 @@ function lookupDetail(holder,plate){
   grid.append(vcard);
   const s=el(`<section class="panel"><div class="panel-h"><h2>回廠與消費</h2><p>12 個月＝2025-08-18～2026-08-18 工單</p></div>${kv([
     ['最後定保日期',dash(g('最後定保日期'))],['上次定保里程',g('上次定保里程')?fmt(+g('上次定保里程'))+' km':'—'],['前一工單日期',dash(g('前一工單日期'))],['距上次回廠',g('距上次回廠天數')?fmt(+g('距上次回廠天數'))+' 天':'—'],['一年回廠定保次數',dash(g('一年回廠定保次數'))],['定保頻率',dash(g('定保頻率'))],['近 3 個月消費',g('近3個月消費')?'NT$'+fmt(+g('近3個月消費')):'—'],['美容一年消費',g('美容一年消費')?'NT$'+fmt(+g('美容一年消費'))+'（'+esc(g('美容消費等級'))+'）':'—'],['輪胎',g('輪胎年更換次數')?`一年換 ${esc(g('輪胎年更換次數'))} 次，最後 ${dash(g('輪胎最後更換'))}`:'一年內未更換'],['電瓶',g('電瓶年更換次數')?`一年換 ${esc(g('電瓶年更換次數'))} 次，最後 ${dash(g('電瓶最後更換'))}`:'一年內未更換'],['12 個月工單',`${fmt(+g('12個月工單數'))} 張、NT$${fmt(+g('12個月工單金額'))}`],['其中定保／輪胎／電瓶／美容',`NT$${fmt(+g('12個月定保金額'))}／${fmt(+g('12個月輪胎金額'))}／${fmt(+g('12個月電瓶金額'))}／${fmt(+g('12個月美容金額'))}`]])}</section>`);
+  if(x.opps.length){ const op=el(`<section class="panel"><div class="panel-h"><h2>商機建議</h2><p>${x.opps.length} 項，潛在金額 NT$${fmt(x.oppAmt)}；規則判斷，聯絡前請確認車況</p></div><div class="tbl-wrap"><table><thead><tr><th class="l">商機</th><th class="l">原因</th><th>預估金額</th></tr></thead><tbody>${x.opps.map(o=>`<tr><td class="l"><b>${esc(o.name)}</b></td><td class="l">${esc(oppReason(o,x))}</td><td class="num">${o.amt?'NT$'+fmt(o.amt):'<span class="pill y">待提供</span>'}</td></tr>`).join('')}</tbody></table></div></section>`); grid.after(op); }
   holder.append(s);
+  const pr=(g('零件紀錄')||'').split(';').filter(Boolean).map(s=>s.split('=')).sort((a,b)=>b[1].localeCompare(a[1]));
+  const sv=(g('年度服務')||'').split(';').filter(Boolean).map(s=>{const [n,c]=s.split('='); return [n,...c.split('/')]});
+  if(pr.length||sv.length){ const pp=el(`<section class="panel"><div class="panel-h"><h2>零件與年度服務紀錄</h2><p>常用 8 項零件只有近 12 個月資料，其他零件自 2024-01 起</p></div><div class="grid2">
+    <div>${pr.length?`<div class="kv">${pr.map(([n,d])=>`<div>${esc(n)}</div><div class="kv-v">最後更換 ${esc(d)}</div>`).join('')}</div>`:'<p class="note">資料期間內沒有零件更換紀錄</p>'}</div>
+    <div>${sv.length?`<div class="tbl-wrap"><table><thead><tr><th class="l">年度服務</th><th>2024</th><th>2025</th><th>2026</th></tr></thead><tbody>${sv.map(a=>`<tr><td class="l">${esc(a[0])}</td><td class="num">${a[1]}</td><td class="num">${a[2]}</td><td class="num">${a[3]}</td></tr>`).join('')}</tbody></table></div>`:'<p class="note">沒有年度服務施作紀錄</p>'}</div></div></section>`); holder.append(pp); }
   if(!V.deid&&sameOwner.length>1){ const l=el(`<section class="panel"><div class="panel-h"><h2>同車主名下車輛</h2><p>依車主姓名＋手機比對，尚未經正式身分辨識${sameOwner.length>50?'；只列前 50 台':''}</p></div><div class="tbl-wrap"><table><thead><tr><th class="l">牌照號碼</th><th class="l">車型</th><th>車齡</th><th>最後里程</th><th class="l">保固狀態</th><th class="l">服務廠</th><th>12 個月金額</th></tr></thead><tbody>${sameOwner.slice(0,50).map(y=>`<tr class="click ${y===x?'other':''}" data-p="${esc(y.plate)}"><td class="l"><b>${esc(y.plate)}</b>${y===x?' <span class="pill n">本車</span>':''}</td><td class="l">${dash(y.model)}</td><td class="num">${isNaN(y.age)?'—':y.age.toFixed(1)+' 年'}</td><td class="num">${isNaN(y.km)?'—':fmt(y.km)}</td><td class="l">${wPill(y.w)}</td><td class="l">${dash(y.br)}</td><td class="num">${y.spend?'NT$'+fmt(y.spend):'—'}</td></tr>`).join('')}</tbody></table></div></section>`);
     l.querySelectorAll('tr.click').forEach(tr=>tr.onclick=()=>location.hash='#/lookup/'+encodeURIComponent(tr.dataset.p)); holder.append(l); }
   holder.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{const sp=holder.querySelector('#'+b.dataset.show); const full=sp.textContent===sp.dataset.full; sp.textContent=full?maskPhone(sp.dataset.full):sp.dataset.full; b.textContent=full?'顯示':'隱藏'});
