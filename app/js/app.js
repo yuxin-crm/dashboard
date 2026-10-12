@@ -458,7 +458,7 @@ function pageAbout(main){
 const canPrivate=location.protocol==='file:'||location.hostname==='localhost'||location.hostname==='127.0.0.1';
 const PRIVATE_SRCS=canPrivate?['data/vehicles.js','../../yuxin-crm/private/vehicles.js','data/vehicles-deid.js']:['data/vehicles-deid.js'];
 let V=null, Vloading=null;
-const LF={q:'',model:'',age:'',km:'',w:'',br:'',adv:'',tech:'',sales:'',habit:'',opp:'',sort:'spend',dir:-1,page:0};
+const LF={q:'',model:'',age:'',km:'',w:'',br:'',adv:'',tech:'',sales:'',habit:'',opp:'',part:'',pst:'any',sort:'spend',dir:-1,page:0};
 function loadVehicles(){
   if(V) return Promise.resolve(V);
   if(Vloading) return Vloading;
@@ -485,7 +485,7 @@ function oppReason(o,x){
 function prepVehicles(X){
   const C={}; X.cols.forEach((c,i)=>C[c]=i);
   const num=s=>s===''?NaN:+s;
-  const rows=X.rows.map(r=>({r,plate:r[0],pn:r[0].toUpperCase().replace(/[-\s]/g,''),owner:r[1],mob:r[3],age:num(r[C['車齡（年）']]),km:num(r[C['最後有效里程']]),w:r[C['系統保固狀態']],br:r[C['服務廠']],adv:r[C['服務專員']],tech:C['技師']!==undefined?r[C['技師']]:'',sales:r[C['關懷業務']],model:r[C['車型分類']]||r[C['車型']],rawModel:r[C['車型']],days:num(r[C['距上次回廠天數']]),spend:num(r[C['12個月工單金額']])||0,opps:C['商機']!==undefined&&r[C['商機']]?r[C['商機']].split(';').map(s=>{const [code,param]=s.split(':'), ru=ruleOf(code); return {code,name:ru.name,amt:ru.price||0,param,rule:ru}}):[],oppAmt:C['商機金額']!==undefined?num(r[C['商機金額']])||0:0}));
+  const rows=X.rows.map(r=>({r,plate:r[0],pn:r[0].toUpperCase().replace(/[-\s]/g,''),owner:r[1],mob:r[3],age:num(r[C['車齡（年）']]),km:num(r[C['最後有效里程']]),w:r[C['系統保固狀態']],br:r[C['服務廠']],adv:r[C['服務專員']],tech:C['技師']!==undefined?r[C['技師']]:'',sales:r[C['關懷業務']],model:r[C['車型分類']]||r[C['車型']],rawModel:r[C['車型']],days:num(r[C['距上次回廠天數']]),spend:num(r[C['12個月工單金額']])||0,opps:C['商機']!==undefined&&r[C['商機']]?r[C['商機']].split(';').map(s=>{const [code,param]=s.split(':'), ru=ruleOf(code); return {code,name:ru.name,amt:ru.price||0,param,rule:ru}}):[],oppAmt:C['商機金額']!==undefined?num(r[C['商機金額']])||0:0,parts:C['零件紀錄']!==undefined&&r[C['零件紀錄']]?Object.fromEntries(r[C['零件紀錄']].split(';').map(s=>s.split('='))):{}}));
   const owners={}; rows.forEach(x=>{const k=x.owner+'|'+(x.mob||x.plate); (owners[k]=owners[k]||[]).push(x); x.ok=k});
   const count=f=>{const m={}; rows.forEach(x=>{const k=f(x); if(k) m[k]=(m[k]||0)+1}); return Object.entries(m).sort((a,b)=>b[1]-a[1])};
   return {asOf:X.asOf,deid:!!X.deid,C,rows,owners,models:count(x=>x.model),brs:count(x=>x.br),advs:count(x=>x.adv),saless:count(x=>x.sales),ws:count(x=>x.w)};
@@ -512,6 +512,20 @@ function pageLookup(main,param){
    .catch(e=>{ holder.innerHTML=''; holder.append(el(`<section class="panel"><div class="panel-h"><h2>找不到本機車輛資料</h2></div><p style="margin:0">請確認 <code>C:\\Projects\\yuxin-crm\\private\\vehicles.js</code> 存在。這個檔案由 <code>tools/excel-analysis/VehicleLookupExport.cs</code> 從 Excel 產生，不會上傳到 GitHub。</p></section>`)); });
 }
 
+// 零件篩選：any＝資料期間有更換紀錄；r12＝近 12 個月有更換；n12＝近 12 個月沒有更換（含無紀錄）；none＝資料期間無紀錄
+// 8 項常用零件只有近 12 個月資料；其他零件資料自 2024-01 起（約 33 個月）
+const PART12=['輪胎','電瓶','空氣芯','空調濾網','雨刷','來令片','皮帶','火星塞'];
+function pstOptions(n){
+  const base=[['any','有更換紀錄'],['r12','近 12 個月有更換'],['n12','近 12 個月未更換']];
+  if(!n||PART12.includes(n)) return base.concat([['none','資料期間（近 12 個月）無紀錄']]);
+  return base.concat([['r24','近 24 個月有更換'],['n24','近 24 個月未更換'],['none','近 3 年未更換（資料自 2024-01 起，約 33 個月無紀錄）']]);
+}
+function partHit(x,n){
+  const d=x.parts[n]; if(LF.pst==='none') return !d; if(!d) return LF.pst==='n12'||LF.pst==='n24';
+  const cut=new Date(new Date(V.asOf).getTime()-365*864e5).toISOString().slice(0,10);
+  const cut24=new Date(new Date(V.asOf).getTime()-730*864e5).toISOString().slice(0,10);
+  return LF.pst==='r12'?d>=cut:LF.pst==='n12'?d<cut:LF.pst==='r24'?d>=cut24:LF.pst==='n24'?d<cut24:true;
+}
 function lookupSearch(holder){
   holder.append(el(V.deid
     ? '<p class="note">本頁為去識別化資料：車牌與車主以 ES 編碼表示，不含姓名、電話；年齡為年齡層、領牌日只到年月。編碼與車牌的對照只在公司電腦。資料基準日 '+esc(V.asOf)+'。</p>'
@@ -529,6 +543,8 @@ function lookupSearch(holder){
       <label>關懷業務<select id="lf-sales"></select></label>
       <label>消費習慣<select id="lf-habit"></select></label>
       <label>商機<select id="lf-opp"></select></label>
+      <label>零件<select id="lf-part"></select></label>
+      <label>更換狀態<select id="lf-pst"></select></label>
     </div><div class="lf-count" id="lf-count"></div></section>`);
   holder.append(f);
   const $=id=>f.querySelector('#'+id);
@@ -546,15 +562,21 @@ function lookupSearch(holder){
     const os=$('lf-opp'), ol=Object.entries(om).sort((a,b)=>b[1][1]-a[1][1]);
     os.innerHTML='<option value="">全部（含無商機）</option>'+ol.map(([c,[n,k]])=>`<option value="${esc(c)}">${esc(n)}（${fmt(k)}）</option>`).join('')+(on?`<option value="${NONE}">無商機（${fmt(on)}）</option>`:'');
     os.value=LF.opp; if(os.value!==LF.opp) LF.opp='';
+    const pr=filtered('part'), ps=$('lf-part'), pn=(I&&I.parts&&I.parts.names)||[];
+    const pc=pn.map(n=>[n,pr.filter(x=>partHit(x,n)).length]).sort((a,b)=>b[1]-a[1]);
+    ps.innerHTML='<option value="">全部零件（不篩選）</option>'+pc.map(([n,k])=>`<option value="${esc(n)}">${esc(n)}（${fmt(k)}）</option>`).join('');
+    ps.value=LF.part;
+    const opts=pstOptions(LF.part); if(!opts.some(o=>o[0]===LF.pst)) LF.pst='any';
+    $('lf-pst').innerHTML=opts.map(([v,l])=>`<option value="${v}">${l}</option>`).join(''); $('lf-pst').value=LF.pst; $('lf-pst').disabled=!LF.part;
   }
   $('lf-age').innerHTML='<option value="">全部車齡</option>'+AGE.map(a=>`<option value="${a[0]}">${a[1]}</option>`).join('');
   $('lf-km').innerHTML='<option value="">全部里程</option>'+KMB.map(a=>`<option value="${a[0]}">${a[1]}</option>`).join('');
   $('lf-habit').innerHTML='<option value="">全部</option>'+HABIT.map(g=>`<optgroup label="${g.g}">${g.o.map(o=>`<option value="${o[0]}">${o[1]}</option>`).join('')}</optgroup>`).join('');
   if(!LF.br&&state.branch&&V.brs.some(b=>b[0]===state.branch)) LF.br=state.branch;
-  ['model','age','km','w','br','adv','tech','sales','habit','opp'].forEach(k=>{ const s=$('lf-'+k); s.value=LF[k]; s.onchange=()=>{LF[k]=s.value; LF.page=0; draw()}; });
+  ['model','age','km','w','br','adv','tech','sales','habit','opp','part','pst'].forEach(k=>{ const s=$('lf-'+k); s.value=LF[k]; s.onchange=()=>{LF[k]=s.value; LF.page=0; draw()}; });
   const q=$('lf-q'); q.value=LF.q; let qt; q.oninput=()=>{clearTimeout(qt); qt=setTimeout(()=>{LF.q=q.value.trim(); LF.page=0; draw()},200)};
   q.onkeydown=e=>{ if(e.key==='Enter'){ const r=filtered(); if(r.length===1) location.hash='#/lookup/'+encodeURIComponent(r[0].plate); }};
-  $('lf-reset').onclick=()=>{Object.assign(LF,{q:'',model:'',age:'',km:'',w:'',br:'',adv:'',tech:'',sales:'',habit:'',opp:'',page:0}); lookupSearchRedraw()};
+  $('lf-reset').onclick=()=>{Object.assign(LF,{q:'',model:'',age:'',km:'',w:'',br:'',adv:'',tech:'',sales:'',habit:'',opp:'',part:'',pst:'any',page:0}); lookupSearchRedraw()};
   const res=el('<section class="panel"><div class="panel-h"><h2>查詢結果</h2><p>點列看車主與車輛基本資料</p></div><div class="tbl-wrap"><table><thead></thead><tbody></tbody></table></div><div class="pager"></div></section>');
   holder.append(res);
   const COLS=[['plate',V.deid?'車輛編碼':'牌照號碼',x=>x.plate,1],...(V.deid?[]:[['owner','車主',x=>x.owner,1]]),['model','車型',x=>x.model,1],['age','車齡',x=>x.age],['km','最後里程',x=>x.km],['w','保固狀態',x=>x.w,1],['br','服務廠',x=>x.br,1],['adv','服務專員',x=>x.adv,1],['tech','技師',x=>x.tech,1],['sales','關懷業務',x=>x.sales,1],['opp','商機',x=>x.oppAmt],['days','距上次回廠',x=>x.days],['spend','12 個月金額',x=>x.spend]];
@@ -564,7 +586,8 @@ function lookupSearch(holder){
     const eq=k=>x=>except===k||!LF[k]||(LF[k]===NONE?!x[k]:x[k]===LF[k]);
     const fm=eq('model'),fw=eq('w'),fb=eq('br'),fa=eq('adv'),ft=eq('tech'),fs=eq('sales');
     const fo=x=>except==='opp'||!LF.opp||(LF.opp===NONE?!x.opps.length:x.opps.some(o=>o.code===LF.opp));
-    return V.rows.filter(x=>(!qq||x.pn.includes(qq)||x.owner.toUpperCase().includes(qq)||(x.rawModel||'').toUpperCase().replace(/[-\s]/g,'').includes(qq))&&fm(x)&&(!ag||ag[2](x))&&(!kb||kb[2](x))&&fw(x)&&fb(x)&&fa(x)&&ft(x)&&fs(x)&&fo(x)&&(!hb||hb(x)));
+    const fp=x=>except==='part'||!LF.part||partHit(x,LF.part);
+    return V.rows.filter(x=>(!qq||x.pn.includes(qq)||x.owner.toUpperCase().includes(qq)||(x.rawModel||'').toUpperCase().replace(/[-\s]/g,'').includes(qq))&&fm(x)&&(!ag||ag[2](x))&&(!kb||kb[2](x))&&fw(x)&&fb(x)&&fa(x)&&ft(x)&&fs(x)&&fo(x)&&fp(x)&&(!hb||hb(x)));
   }
   function draw(){
     refreshOpts(); const rs=filtered(); const c=COLS.find(c=>c[0]===LF.sort)||COLS[COLS.length-1];
