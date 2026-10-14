@@ -79,6 +79,7 @@ const ROUTES=[
   {g:'服務廠與人員'},
   {id:'branches',t:'服務廠比較',p:pageBranches},
   {id:'advisors',t:'服務專員',p:pagePeople('adv')},
+  {id:'techs',t:'技術專員',p:pagePeople('tech')},
   {id:'sales',t:'關懷業務',p:pagePeople('sales')},
   {g:'資料與系統'},
   {id:'quality',t:'資料品質',p:pageQuality},
@@ -329,32 +330,35 @@ function pageBranches(main){
 }
 
 function peopleRows(kind){
-  const src=kind==='adv'?D.advisors:D.brSales;
-  if(state.branch) return Object.keys(src).filter(k=>k.split('|')[0]===state.branch).map(k=>({name:k.slice(k.indexOf('|')+1),branch:state.branch,r:src[k],other:k.endsWith('|未指派')}));
+  const src=kind==='adv'?D.advisors:kind==='tech'?(D.techs||{}):D.brSales;
+  const oth=k=>k.endsWith('|未指派')||(kind==='tech'&&k.endsWith('|其他技師'));
+  if(state.branch) return Object.keys(src).filter(k=>k.split('|')[0]===state.branch).map(k=>({name:k.slice(k.indexOf('|')+1),branch:state.branch,r:src[k],other:oth(k)}));
   if(kind==='sales') return Object.keys(D.sales).map(k=>({name:k,branch:'',r:D.sales[k],other:k==='未指派'}));
-  return Object.keys(src).filter(k=>!OTHER.has(k.split('|')[0])).map(k=>({name:k.slice(k.indexOf('|')+1),branch:k.split('|')[0],r:src[k],other:k.endsWith('|未指派')}));
+  return Object.keys(src).filter(k=>!OTHER.has(k.split('|')[0])).map(k=>({name:k.slice(k.indexOf('|')+1),branch:k.split('|')[0],r:src[k],other:oth(k)}));
 }
 function peopleTable(parent,kind,sort,keys){
   const ks=keys||['veh','act_rate','churn_rate','m_over','act_mover','w_180all','act_w30','hv_churn','contact_rate','rev12'];
-  const cols=[{k:'name',t:kind==='adv'?'服務專員':'關懷業務',l2:1,get:r=>r.name,text:r=>esc(r.name)}];
-  const showBranch=!state.branch&&kind==='adv';
+  const lbl=kind==='adv'?'服務專員':kind==='tech'?'技術專員':'關懷業務';
+  const cols=[{k:'name',t:lbl,l2:1,get:r=>r.name,text:r=>esc(r.name)}];
+  const showBranch=!state.branch&&kind!=='sales';
   if(showBranch) cols.push({k:'branch',t:'服務廠',l2:1,get:r=>r.branch,text:r=>esc(r.branch)});
   ks.forEach(k=>cols.push({k,t:M[k].l.replace(/（.*）/,'')}));
-  table(parent,{name:kind==='adv'?'服務專員':'關懷業務',rank:1,rows:peopleRows(kind),sort,cols,search:1,onRow:showBranch?(x=>setBranch(x.branch)):null});
+  table(parent,{name:lbl,rank:1,rows:peopleRows(kind),sort,cols,search:1,onRow:showBranch?(x=>setBranch(x.branch)):null});
 }
 function pagePeople(kind){return function(main){
-  const isAdv=kind==='adv';
-  head(main,isAdv?'服務專員':'關懷業務',isAdv?'依每台車前一張工單的接待人員歸屬':'依「關懷指派」欄判定的業務歸屬（優先取銷售人員名單中的人）'+(state.branch?'；只計入上次在本廠保養的車':''));
+  const isAdv=kind!=='sales', lbl=kind==='adv'?'服務專員':kind==='tech'?'技術專員':'關懷業務';
+  head(main,lbl,kind==='tech'?'依每台車前一張工單的承修技師歸屬（技師名單外顯示「其他技師」，不列入排名）':isAdv?'依每台車前一張工單的接待人員歸屬':'依「關懷指派」欄判定的業務歸屬（優先取銷售人員名單中的人）'+(state.branch?'；只計入上次在本廠保養的車':''));
   const rows=peopleRows(kind).filter(x=>!x.other);
   const top=(k)=>rows.slice().sort((a,b)=>M[k].f(b.r)-M[k].f(a.r))[0];
   const tv=top('veh'), to=top('act_mover'), tw=top('act_w30');
   cards(main,[
-    {l:isAdv?'服務專員人數':'業務人數',val:fmt(rows.length),sub:scopeName()},
+    {l:kind==='tech'?'技術專員人數':isAdv?'服務專員人數':'業務人數',val:fmt(rows.length),sub:scopeName()},
     {l:'負責車輛最多',val:tv?esc(tv.name):'—',sub:tv?`${tv.branch?esc(tv.branch)+'｜':''}${fmt(v(tv.r,'veh'))} 台`:''},
     {cls:'warn',l:'保養逾期待邀約最多',val:to?esc(to.name):'—',sub:to?`${fmt(v(to.r,'act_mover'))} 位`:''},
     {cls:'crit',l:'保固到期待聯絡最多',val:tw?esc(tw.name):'—',sub:tw?`${fmt(v(tw.r,'act_w30'))} 位`:''},
   ]);
-  const t=panel(main,(isAdv?'服務專員':'關懷業務')+'排名',state.branch?esc(state.branch):(isAdv?'全公司（不含非一般服務廠）；點列切換到該廠':'全公司'));
+  const t=panel(main,lbl+'排名',state.branch?esc(state.branch):(isAdv?'全公司（不含非一般服務廠）；點列切換到該廠':'全公司'));
+  if(kind==='tech'&&!D.techs){ t.append(el('<p class=\"note\">尚無技師彙總資料，請重新執行 tools/regenerate-all.ps1。</p>')); return; }
   peopleTable(t,kind,'act_mover');
   main.append(el(`<p class="note">再往下的客戶名單（Customer 360 → Vehicle 360）含個資，不在此儀表板呈現，需在正式 CRM 系統依權限開啟。</p>`));
 }}
