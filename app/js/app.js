@@ -812,7 +812,7 @@ function pageLookup(main,param){
   const holder=el('<div style="display:grid;gap:16px"></div>'); main.append(holder);
   holder.append(el('<p class="note">載入車輛資料中…（約 5 萬台，第一次需要幾秒）</p>'));
   loadVehicles().then(()=>{ holder.innerHTML=''; if(param) lookupDetail(holder,param); else lookupSearch(holder); })
-   .catch(e=>{ holder.innerHTML=''; holder.append(el(`<section class="panel"><div class="panel-h"><h2>找不到本機車輛資料</h2></div><p style="margin:0">請確認 <code>C:\\Projects\\yuxin-crm\\private\\vehicles.js</code> 存在。這個檔案由 <code>tools/excel-analysis/VehicleLookupExport.cs</code> 從 Excel 產生，不會上傳到 GitHub。</p></section>`)); });
+   .catch(e=>{ console.error(e); holder.innerHTML=''; if(e&&e.message!=='missing'){ holder.append(el(`<section class="panel"><p style="margin:0">車輛查詢顯示時發生錯誤：${esc(String(e&&e.message||e))}</p></section>`)); return; } holder.append(el(`<section class="panel"><div class="panel-h"><h2>找不到本機車輛資料</h2></div><p style="margin:0">請確認 <code>C:\\Projects\\yuxin-crm\\private\\vehicles.js</code> 存在。這個檔案由 <code>tools/excel-analysis/VehicleLookupExport.cs</code> 從 Excel 產生，不會上傳到 GitHub。</p></section>`)); });
 }
 
 // 零件篩選：any＝資料期間有更換紀錄；r12＝近 12 個月有更換；n12＝近 12 個月沒有更換（含無紀錄）；none＝資料期間無紀錄
@@ -906,7 +906,7 @@ function lookupSearch(holder){
     res.querySelectorAll('tbody tr.click').forEach(tr=>tr.onclick=()=>location.hash='#/lookup/'+encodeURIComponent(tr.dataset.p));
   }
   function lookupSearchRedraw(){holder.innerHTML=''; lookupSearch(holder);}
-  $('lf-xlsx').onclick=()=>exportVehicles('車輛查詢_'+D.asOf,filtered());
+  res.querySelector('#lf-xlsx').onclick=()=>exportVehicles('車輛查詢_'+D.asOf,filtered());
   draw();
 }
 
