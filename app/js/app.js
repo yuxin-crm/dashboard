@@ -220,7 +220,7 @@ function monthly(){const names=state.branch?[state.branch]:Object.keys(D.branche
 function alerts(){
   const A=D.all, out=[]; const rate=(r,k)=>pct(v(r,k),v(r,'veh'));
   if(!state.branch){
-    out.push({sev:'crit',tag:'保固判定錯誤',msg:`<b class="num">${fmt(v(A,'w_expkm'))}</b> 台車年限未滿 3 年、但實際里程已達 100,000 km。原 Excel 只看日期，仍標示「未過期」，應為已過保（里程先到）。`,go:'#/warranty'});
+    if(v(A,'w_xlsmis')) out.push({sev:'crit',tag:'保固判定錯誤',msg:`<b class="num">${fmt(v(A,'w_xlsmis'))}</b> 台車總表「新車保固到期」仍標示「未過期」，但依 3 年或 100,000 km 先到者為準已過保，請更新總表。`,go:'#/warranty'});
     out.push({sev:'warn',tag:'保固即將到期',msg:`未來 30 天有 <b class="num">${fmt(v(A,'w_30'))}</b> 台車原廠保固到期，其中 <b class="num">${fmt(v(A,'act_w30'))}</b> 位車主可聯絡，建議安排到期前健檢。`,go:'#/warranty'});
     const worst=realBranches.slice().sort((a,b)=>rate(D.branches[b],'m_over')-rate(D.branches[a],'m_over'))[0];
     out.push({sev:'warn',tag:'保養逾期',msg:`${worst}保養逾期率 <b class="num">${p1(rate(D.branches[worst],'m_over'))}</b>，高於公司平均 ${p1(rate(A,'m_over'))} 共 <b class="num">${(rate(D.branches[worst],'m_over')-rate(A,'m_over')).toFixed(1)}</b> 個百分點。`,b:worst,go:'#/retention'});
@@ -229,7 +229,7 @@ function alerts(){
     out.push({sev:'info',tag:'資料品質',msg:`VIN 只有 <b class="num">${p1(rate(A,'vin'))}</b> 有填、Email ${p1(rate(A,'email'))}；${fmt(v(A,'w_pend'))} 台沒有領牌日，保固狀態待確認。`,go:'#/quality'});
   } else {
     const B=cur(), b=state.branch;
-    if(v(B,'w_expkm')) out.push({sev:'crit',tag:'保固判定錯誤',msg:`${b}有 <b class="num">${fmt(v(B,'w_expkm'))}</b> 台車年限內但里程已達 100,000 km，原 Excel 仍標示保固內。`,go:'#/warranty'});
+    if(v(B,'w_xlsmis')) out.push({sev:'crit',tag:'保固判定錯誤',msg:`${b}有 <b class="num">${fmt(v(B,'w_xlsmis'))}</b> 台車總表仍標示保固內，但依 3 年或 100,000 km 已過保。`,go:'#/warranty'});
     out.push({sev:rate(B,'m_over')>rate(A,'m_over')?'warn':'info',tag:'保養逾期',msg:`保養逾期率 <b class="num">${p1(rate(B,'m_over'))}</b>，公司平均 ${p1(rate(A,'m_over'))}；可聯絡待邀約 <b class="num">${fmt(v(B,'act_mover'))}</b> 位。`,go:'#/retention'});
     out.push({sev:v(B,'w_30')?'warn':'info',tag:'保固即將到期',msg:`30 天內保固到期 <b class="num">${fmt(v(B,'w_30'))}</b> 台、180 天內 <b class="num">${fmt(M.w_180all.f(B))}</b> 台。`,go:'#/warranty'});
     out.push({sev:rate(B,'r_churn')>rate(A,'r_churn')?'warn':'info',tag:'流失風險',msg:`超過一年未回廠 <b class="num">${p1(rate(B,'r_churn'))}</b>（公司 ${p1(rate(A,'r_churn'))}），高價值流失 <b class="num">${fmt(v(B,'hv_churn'))}</b> 位。`,go:'#/retention'});
@@ -392,7 +392,7 @@ function pageQuality(main){
   hbars(a,[['手機有效','mob_ok'],['里程可用','km_ok'],['生日','birth'],['個資同意','c_yes'],['VIN','vin'],['Email','email']].map(([l,k])=>{const p=pct(v(r,k),n); return {l,n:p,c:p>=90?'var(--good)':p>=60?'var(--warn)':'var(--crit)',txt:p1(p)+'（'+fmt(v(r,k))+'）'}}),100);
   const e=panel(main,'例外清單（全公司）','Phase 2 匯入時列入 Exception Report，不可自行猜測');
   e.innerHTML='<div class="kv">'+[
-    ['原 Excel 標「未過期」但實際里程 ≥100,000 km','65 台'],['沒有領牌日（保固待確認）',fmt(v(D.all,'w_pend'))+' 台'],['前一里程 <100 km 的假里程讀值','2,647 筆'],['延長保固到期日早於原廠到期日','13,272 筆'],['手機號碼無效（補 0 後仍不符格式）','7,670 筆'],['同一手機對應 2～5 位不同車主','182 支'],['車型空白（總表顯示為 0）','15 台'],['個資拒絕／未授權（不可行銷）',fmt(v(D.all,'c_no'))+'／'+fmt(v(D.all,'c_none'))],['暫停聯絡',fmt(v(D.all,'dnc'))+' 台']
+    ['總表標「未過期」但實際里程 ≥100,000 km（應為已過保）',fmt(v(D.all,'w_xlsmis'))+' 台'],['沒有領牌日（保固待確認）',fmt(v(D.all,'w_pend'))+' 台'],['前一里程 <100 km 的假里程讀值','2,647 筆'],['延長保固到期日早於原廠到期日','13,272 筆'],['手機號碼無效（補 0 後仍不符格式）','7,670 筆'],['同一手機對應 2～5 位不同車主','182 支'],['車型空白（總表顯示為 0）','15 台'],['個資拒絕／未授權（不可行銷）',fmt(v(D.all,'c_no'))+'／'+fmt(v(D.all,'c_none'))],['暫停聯絡',fmt(v(D.all,'dnc'))+' 台']
   ].map(x=>`<div>${x[0]}</div><div class="num">${x[1]}</div>`).join('')+'</div>';
   if(!state.branch){const t=panel(main,'各服務廠資料品質','點列切換到該廠');
     table(t,{name:'資料品質_服務廠',rows:branchRows(),sort:'mob_rate',dir:1,cols:[nameCol,{k:'veh',t:'車輛'},{k:'mob_rate',t:'手機有效'},{k:'km_rate',t:'里程可用'},{k:'birth_rate',t:'生日'},{k:'vin_rate',t:'VIN'},{k:'email_rate',t:'Email'},{k:'consent_rate',t:'個資同意'},{k:'w_pend',t:'無領牌日'}],onRow:x=>setBranch(x.name)});}
