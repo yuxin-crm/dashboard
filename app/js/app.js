@@ -573,8 +573,8 @@ function specialBody(holder){
       {cls:'good',l:'近 180 天有回廠',val:fmt(recent),sub:pc(recent)},
       {cls:'crit',l:'超過 1 年未回廠或無紀錄',val:fmt(lost),sub:pc(lost)},
       {l:'保固內／即將到期',val:fmt(inW),sub:pc(inW)},
-      {cls:'warn',l:'有商機的車',val:fmt(oppN),sub:`商機金額 NT$${fmt(oppAmt)}`},
-      {l:'近 12 個月工單金額',val:'NT$'+fmt(spend),sub:n?'每車 NT$'+fmt(Math.round(spend/n)):''},
+      {cls:'warn',l:'有商機的車',val:fmt(oppN),sub:`商機金額 NT$${money(oppAmt)}`},
+      {l:'近 12 個月工單金額',val:'NT$'+money(spend),sub:n?'每車 NT$'+fmt(Math.round(spend/n)):''},
       {cls:'warn',l:'換車潛在客戶',val:fmt(rows.filter(x=>x.renew).length),sub:'強烈建議 '+fmt(rows.filter(x=>x.renew&&x.renew.rank===1).length)+' 台',go:()=>{RF.sp=SPF.list; location.hash='#/renew';}},
     ]);
     const g=el('<div class="grid2" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px"></div>'); out.append(g);
