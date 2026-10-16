@@ -511,7 +511,7 @@ function oppReason(o,x){
 function prepVehicles(X){
   const C={}; X.cols.forEach((c,i)=>C[c]=i);
   const num=s=>s===''?NaN:+s;
-  const rows=X.rows.map(r=>({r,plate:r[0],pn:r[0].toUpperCase().replace(/[-\s]/g,''),owner:r[1],mob:r[3],age:num(r[C['車齡（年）']]),km:num(r[C['最後有效里程']]),w:r[C['系統保固狀態']],br:r[C['服務廠']],adv:r[C['服務專員']],tech:C['技師']!==undefined?r[C['技師']]:'',sales:r[C['關懷業務']],model:r[C['車型分類']]||r[C['車型']],rawModel:r[C['車型']],days:num(r[C['距上次回廠天數']]),spend:num(r[C['12個月工單金額']])||0,opps:C['商機']!==undefined&&r[C['商機']]?r[C['商機']].split(';').map(s=>{const [code,param]=s.split(':'), ru=ruleOf(code); return {code,name:ru.name,amt:ru.price||0,param,rule:ru}}):[],oppAmt:C['商機金額']!==undefined?num(r[C['商機金額']])||0:0,parts:C['零件紀錄']!==undefined&&r[C['零件紀錄']]?Object.fromEntries(r[C['零件紀錄']].split(';').map(s=>s.split('='))):{},sp:C['特殊名單']!==undefined&&r[C['特殊名單']]?r[C['特殊名單']].split(/[、,，]/).map(s=>s.trim()).filter(Boolean):[],city:(r[C['轄區縣市']]||'').replace(/臺/g,'台').replace(/巿/g,'市'),dist:r[C['轄區區域']]||''}));
+  const rows=X.rows.map(r=>({r,plate:r[0],pn:r[0].toUpperCase().replace(/[-\s]/g,''),owner:r[1],mob:r[3],age:num(r[C['車齡（年）']]),km:num(r[C['最後有效里程']]),w:r[C['系統保固狀態']],br:r[C['服務廠']],adv:r[C['服務專員']],tech:C['技師']!==undefined?r[C['技師']]:'',sales:r[C['關懷業務']],model:r[C['車型分類']]||r[C['車型']],rawModel:r[C['車型']],days:num(r[C['距上次回廠天數']]),spend:num(r[C['12個月工單金額']])||0,opps:C['商機']!==undefined&&r[C['商機']]?r[C['商機']].split(';').map(s=>{const [code,param]=s.split(':'), ru=ruleOf(code); return {code,name:ru.name,amt:ru.price||0,param,rule:ru}}):[],oppAmt:C['商機金額']!==undefined?num(r[C['商機金額']])||0:0,parts:C['零件紀錄']!==undefined&&r[C['零件紀錄']]?Object.fromEntries(r[C['零件紀錄']].split(';').map(s=>s.split('='))):{},sp:(r[C['活動對象']??C['特殊名單']]||'').split(/[、,，]/).map(s=>s.trim()).filter(Boolean),city:(r[C['轄區縣市']]||'').replace(/臺/g,'台').replace(/巿/g,'市'),dist:r[C['轄區區域']]||''}));
   rows.forEach(x=>x.renew=renewOf(x));
   const owners={}; rows.forEach(x=>{const k=x.owner+'|'+(x.mob||x.plate); (owners[k]=owners[k]||[]).push(x); x.ok=k});
   const count=f=>{const m={}; rows.forEach(x=>{const k=f(x); if(k) m[k]=(m[k]||0)+1}); return Object.entries(m).sort((a,b)=>b[1]-a[1])};
@@ -533,11 +533,11 @@ const habitFn=k=>{for(const g of HABIT) for(const o of g.o) if(o[0]===k) return 
 const maskPhone=p=>p&&p.length>=7?p.slice(0,4)+'-***-'+p.slice(-3):p||'—';
 const wPill=w=>`<span class="pill ${w==='保固內'?'g':w==='已過保'?'r':w==='待確認'?'n':'y'}">${esc(w||'—')}</span>`;
 
-// ---------- 活動對象：資料來源為總表「特殊名單」欄（例：C類UIO），挑選名單看分布、篩出招攬對象 ----------
+// ---------- 活動對象：資料來源為總表「活動對象」欄（原名特殊名單）（例：C類UIO），挑選名單看分布、篩出招攬對象 ----------
 const SPF={list:'',br:'',rec:'',w:'',opp:''};
 const RECENCY=[['r180','近 180 天有回廠',x=>x.days<=180],['r365','181～365 天未回廠',x=>x.days>180&&x.days<=365],['r999','超過 1 年未回廠',x=>x.days>365],['rna','無回廠紀錄',x=>isNaN(x.days)]];
 function pageSpecial(main){
-  head(main,'活動對象','挑選活動對象名單，看車輛分布、篩出招攬對象並匯出 Excel；名單來源為總表「特殊名單」欄（例：C類UIO）');
+  head(main,'活動對象','挑選活動對象名單，看車輛分布、篩出招攬對象並匯出 Excel；名單來源為總表「活動對象」欄（例：C類UIO）');
   const holder=el('<div style="display:grid;gap:16px"></div>'); main.append(holder);
   holder.append(el('<p class="note">載入車輛資料中…</p>'));
   loadVehicles().then(()=>{ holder.innerHTML=''; specialBody(holder); })
@@ -546,7 +546,7 @@ function pageSpecial(main){
 function specialBody(holder){
   const lists={}; V.rows.forEach(x=>x.sp.forEach(n=>lists[n]=(lists[n]||0)+1));
   const names=Object.keys(lists).sort((a,b)=>lists[b]-lists[a]);
-  if(!names.length){ holder.append(el('<section class="panel"><p style="margin:0">目前沒有活動對象。在總表「特殊名單」欄填入名單名稱（例：C類UIO）後重新產生儀表板資料即可。</p></section>')); return; }
+  if(!names.length){ holder.append(el('<section class="panel"><p style="margin:0">目前沒有活動對象。在總表「活動對象」欄填入名單名稱（例：C類UIO）後重新產生儀表板資料即可。</p></section>')); return; }
   if(!SPF.list||!lists[SPF.list]) SPF.list=names[0];
   const opt=(arr,cur,all)=>`<option value="">${all}</option>`+arr.map(([k,l,n])=>`<option value="${esc(k)}" ${k===cur?'selected':''}>${esc(l)}${n!=null?'（'+fmt(n)+'）':''}</option>`).join('');
   const f=el(`<section class="panel"><div class="panel-h"><h2>選擇活動對象與條件</h2><p>${V.deid?'去識別化資料（車輛編碼）':'含個資，僅供公司內部使用'}；資料基準日 ${esc(V.asOf)}</p></div>
@@ -607,7 +607,7 @@ function specialBody(holder){
       {k:'opps',t:'商機項目',l2:1,get:r=>r.x.opps.map(o=>o.name).join('、'),text:r=>esc(r.x.opps.map(o=>o.name).join('、')||'—')},
       {k:'renew',t:'換車建議',l2:1,get:r=>r.x.renew?r.x.renew.level:'',text:r=>r.x.renew?esc(r.x.renew.level):'—'},
     ]});
-    out.append(el('<p class="note">點列可開啟該車的車輛查詢；活動對象來源為總表「特殊名單」欄，新增其他名單（例：D類UIO）後重新產生資料就會出現在選單。</p>'));
+    out.append(el('<p class="note">點列可開啟該車的車輛查詢；活動對象來源為總表「活動對象」欄，新增其他名單（例：D類UIO）後重新產生資料就會出現在選單。</p>'));
   }
   f.querySelector('#sp-list').onchange=e=>{SPF.list=e.target.value; SPF.br=''; SPF.w=''; fill(); draw();};
   [['sp-br','br'],['sp-rec','rec'],['sp-w','w'],['sp-opp','opp']].forEach(([id,k])=>f.querySelector('#'+id).onchange=e=>{SPF[k]=e.target.value; draw();});
