@@ -480,6 +480,8 @@ const PARTS25=['水箱','上水管','下水管','冷凝器','右三角架','左�
 const beautyAmt=x=>+vv(x,'美容一年消費')||0;
 const extDays=x=>{const e=vv(x,'延長保固到期'); return e?(new Date(e)-TODAY())/864e5:NaN;};
 const beautyN=x=>+vv(x,'12個月美容次數')||0;
+// 平均客單價＝近 12 個月工單金額 ÷ 工單數（2418 確認：≥ 15,000 高、≤ 3,000 低）
+const avgTicket=x=>{const n=+vv(x,'12個月工單數'); return n>0?x.spend/n:0;};
 // 服務廠所在行政區（2418 確認 2026-10-16）：輔大＝新莊區、承德＝北投區、濱江＝中山區、民權＝內湖區、基隆＝基隆市（全市），其他照廠名
 const BR_AREA={'輔大廠':'新北市新莊區','三重廠':'新北市三重區','林口廠':'新北市林口區','土城廠':'新北市土城區','中和廠':'新北市中和區','新莊廠':'新北市新莊區','新店廠':'新北市新店區','板橋廠':'新北市板橋區','汐止廠':'新北市汐止區','淡水廠':'新北市淡水區','基隆廠':'基隆市','承德廠':'台北市北投區','大安廠':'台北市大安區','濱江廠':'台北市中山區','北投廠':'台北市北投區','民權廠':'台北市內湖區'};
 const inArea=x=>{const a=BR_AREA[x.br]; if(!a||!x.city||x.city==='過戶待確認') return null; return a.length===3?x.city===a:(x.city+x.dist)===a;};
@@ -557,7 +559,8 @@ const TAGS=[
  ['互動與顧客價值','顧客價值','高換購潛力客','舊換新「強烈建議」','',x=>!!(x.renew&&x.renew.rank===1)],
  ['互動與顧客價值','顧客價值','高忠誠高消費客(綠燈)','近 180 天回廠且年消費 ≥ 3 萬','',x=>x.days<=180&&x.spend>=30000],
  ['互動與顧客價值','顧客價值','高忠誠低消費客(綠燈)','近 180 天回廠且年消費 < 1 萬','',x=>x.days<=180&&x.spend<10000],
- ['互動與顧客價值','顧客價值','消費成長／衰退、客單價、價格敏感等','','',null],
+ ['互動與顧客價值','顧客價值','高客單價客','近 12 個月平均每張工單 ≥ NT$15,000','',x=>avgTicket(x)>=15000],['互動與顧客價值','顧客價值','低客單價客','近 12 個月平均每張工單 ≤ NT$3,000','',x=>avgTicket(x)>0&&avgTicket(x)<=3000],
+ ['互動與顧客價值','顧客價值','消費成長／衰退、價格敏感等','','',null],
  ['服務消費頻次','定保次數','近12個月定保0次','','',x=>+vv(x,'一年回廠定保次數')===0],
  ['服務消費頻次','定保次數','近12個月定保1次','','',x=>+vv(x,'一年回廠定保次數')===1],
  ['服務消費頻次','定保次數','近12個月定保2次','','',x=>+vv(x,'一年回廠定保次數')===2],
@@ -591,7 +594,7 @@ function tagPanel(main){
     const test=(t,x)=>{try{return !!t[5](x)}catch(e){return false}};
     const cnt=TAGS.map(t=>t[5]?rows.filter(x=>test(t,x)).length:null);
     const types=[...new Set(TAGS.map(t=>t[0]))];
-    p.innerHTML=`<p class="note">${state.branch?'服務廠：'+esc(state.branch)+'；':''}共 ${fmt(rows.length)} 台；可判斷 ${TAGS.filter(t=>t[5]).length} 個標籤，${TAGS.filter(t=>!t[5]).length} 項目前沒有資料（需要預約、點數、問卷、驗車、召回、延長保固等資料）</p>`;
+    p.innerHTML=`<p class="note">${state.branch?'服務廠：'+esc(state.branch)+'；':''}共 ${fmt(rows.length)} 台；可判斷 ${TAGS.filter(t=>t[5]).length} 個標籤，${TAGS.filter(t=>!t[5]).length} 項目前沒有資料（需要預約、點數、問卷、驗車、召回、配件等資料）</p>`;
     const det=el('<div></div>');
     types.forEach(ty=>{
       const g=el(`<div style="margin:12px 0"><div style="font-weight:600;margin-bottom:6px">${esc(ty)}</div><div style="display:flex;flex-wrap:wrap;gap:6px"></div></div>`); const w=g.lastChild;
