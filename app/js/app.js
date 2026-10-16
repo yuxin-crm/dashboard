@@ -625,6 +625,7 @@ function exportVehicles(name,list){
 // ---------- 舊換新招攬（規則為預設值，待 2418 確認） ----------
 const RENEW={strongAge:10, strongKm:200000, age:7, km:150000, spend:30000, watchAge:5};
 function renewOf(x){
+  if(x.model==='他牌') return null;  // 他牌車不列入（2418 確認 2026-10-16）
   const a=x.age, k=x.km, sp=x.spend, why=[];
   if(!isNaN(a)&&a>=RENEW.strongAge) why.push('車齡 '+a.toFixed(1)+' 年');
   if(!isNaN(k)&&k>=RENEW.strongKm) why.push('里程 '+fmt(k)+' km');
@@ -640,7 +641,7 @@ function pageRenew(main){
   loadVehicles().then(()=>{ holder.innerHTML=''; renewBody(holder); }).catch(()=>{ holder.innerHTML='<section class="panel"><p style="margin:0">找不到車輛資料。</p></section>'; });
 }
 function renewBody(holder){
-  const rule=el(`<section class="panel"><div class="panel-h"><h2>判斷規則</h2><p>預設門檻，待確認後可調整</p></div><div class="kv">
+  const rule=el(`<section class="panel"><div class="panel-h"><h2>判斷規則</h2><p>預設門檻，待確認後可調整；他牌車不列入</p></div><div class="kv">
     <div style="white-space:nowrap">強烈建議</div><div style="text-align:left;font-weight:400">車齡 ≥ ${RENEW.strongAge} 年，或里程 ≥ ${fmt(RENEW.strongKm)} km</div>
     <div style="white-space:nowrap">建議</div><div style="text-align:left;font-weight:400">車齡 ≥ ${RENEW.age} 年，且（里程 ≥ ${fmt(RENEW.km)} km 或一年維修 ≥ NT$${fmt(RENEW.spend)}）</div>
     <div style="white-space:nowrap">留意</div><div style="text-align:left;font-weight:400">車齡 ≥ ${RENEW.watchAge} 年，且一年維修 ≥ NT$${fmt(RENEW.spend)}（維修支出高）</div></div></section>`);
@@ -691,15 +692,40 @@ function renewBody(holder){
   draw();
 }
 
-// ---------- 轄區分析：總表「轄區縣市」＋「轄區區域」，簡易台灣縣市地圖（點縣市看各區） ----------
+// ---------- 轄區分析：總表「轄區縣市」＋「轄區區域」，簡易台灣地圖（縣市圖＋點選縣市後的各區圖），依數量分 6 級深淺 ----------
 const MAP_LIBS=['https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js','https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js'];
-const MAP_DATA='https://cdn.jsdelivr.net/npm/taiwan-atlas@2021.9.20/counties-10t.json';
-let mapP=null;
-function loadMap(){
-  if(mapP) return mapP;
-  const js=src=>new Promise((ok,no)=>{const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=()=>no(new Error(src)); document.head.append(s);});
-  mapP=js(MAP_LIBS[0]).then(()=>js(MAP_LIBS[1])).then(()=>fetch(MAP_DATA)).then(r=>r.json()).catch(e=>{mapP=null; throw e;});
-  return mapP;
+const MAP_URL=f=>'https://cdn.jsdelivr.net/npm/taiwan-atlas@2021.9.20/'+f;
+const MAP_CACHE={};
+function loadJs(src){ return new Promise((ok,no)=>{const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=()=>no(new Error(src)); document.head.append(s);}); }
+let mapLibP=null;
+function loadMap(file){
+  mapLibP=mapLibP||loadJs(MAP_LIBS[0]).then(()=>loadJs(MAP_LIBS[1])).catch(e=>{mapLibP=null; throw e;});
+  if(!MAP_CACHE[file]) MAP_CACHE[file]=mapLibP.then(()=>fetch(MAP_URL(file))).then(r=>r.json()).catch(e=>{delete MAP_CACHE[file]; throw e;});
+  return MAP_CACHE[file];
+}
+// 6 級藍色（淺→深），級距依數值分位數切，台數差很多時也看得出深淺
+const MAP_PAL=['#eaf2fb','#c6dbef','#9ecae1','#5aa0d6','#2171b5','#08306b'];
+function mapScale(values){
+  const v=values.filter(x=>x>0).sort((a,b)=>a-b); if(!v.length) return {color:()=> '#eef0f3',legend:[]};
+  const q=k=>v[Math.min(v.length-1,Math.floor(k*v.length))];
+  let th=[1,2,3,4,5].map(i=>q(i/6)); th=th.filter((t,i)=>i===0||t>th[i-1]);
+  const color=x=>{ if(!(x>0)) return '#eef0f3'; let i=0; while(i<th.length&&x>=th[i]) i++; return MAP_PAL[Math.round(i*(MAP_PAL.length-1)/Math.max(1,th.length))]; };
+  const edges=[v[0],...th,v[v.length-1]];
+  const legend=edges.slice(0,-1).map((lo,i)=>({c:color(lo),lo,hi:i<edges.length-2?edges[i+1]:edges[edges.length-1]}));
+  return {color,legend};
+}
+function mapLegend(sc,fmtV){ return `<div style="display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:8px;font-size:12px">${sc.legend.map(l=>`<span style="display:inline-flex;align-items:center;gap:4px"><i style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${l.c};border:1px solid #cbd5e1"></i>${fmtV(l.lo)}～${fmtV(l.hi)}</span>`).join('')}<span style="display:inline-flex;align-items:center;gap:4px"><i style="display:inline-block;width:14px;height:14px;border-radius:3px;background:#eef0f3;border:1px solid #cbd5e1"></i>無資料</span></div>`; }
+function drawMap(box,features,nameOf,valueOf,{selected,onClick,tipOf,label,maxW}){
+  const W=360,H=features.length>40?400:520;
+  const proj=d3.geoMercator().fitExtent([[8,8],[W-8,H-8]],{type:'FeatureCollection',features}); const path=d3.geoPath(proj);
+  const vals=features.map(ft=>valueOf(nameOf(ft))); const sc=mapScale(vals);
+  const svg=d3.create('svg').attr('viewBox',`0 0 ${W} ${H}`).attr('role','img').attr('aria-label',label).style('width','100%').style('max-width',(maxW||420)+'px').style('display','block').style('margin','0 auto');
+  svg.selectAll('path').data(features).join('path').attr('d',path).attr('fill',ft=>sc.color(valueOf(nameOf(ft))))
+    .attr('stroke',ft=>nameOf(ft)===selected?'#d9480f':'#fff').attr('stroke-width',ft=>nameOf(ft)===selected?2.5:.7).style('cursor',onClick?'pointer':'default')
+    .on('mousemove',(e,ft)=>showTip(e,tipOf(nameOf(ft)))).on('mouseleave',hideTip).on('click',(e,ft)=>{ if(onClick){ hideTip(); onClick(nameOf(ft)); } });
+  svg.selectAll('text').data(features.filter(ft=>valueOf(nameOf(ft))>0)).join('text').attr('transform',ft=>`translate(${path.centroid(ft)})`).attr('text-anchor','middle').attr('font-size',features.length>40?7:9)
+    .attr('fill',ft=>{const c=sc.color(valueOf(nameOf(ft))); return MAP_PAL.indexOf(c)>=3?'#fff':'#0f172a'}).style('pointer-events','none').text(ft=>nameOf(ft).replace(/(縣|市|區|鄉|鎮)$/,''));
+  box.append(svg.node()); return sc;
 }
 const AF={metric:'n',sp:'',city:''};
 const AREA_METRICS=[
@@ -710,7 +736,7 @@ const AREA_METRICS=[
   ['opp','有商機的車',x=>x.oppAmt>0,'台'],
 ];
 function pageArea(main){
-  head(main,'轄區分析','依總表「轄區縣市」＋「轄區區域」（例：新北市＋板橋區）看車輛分布；點地圖上的縣市看各區');
+  head(main,'轄區分析','依總表「轄區縣市」＋「轄區區域」（例：新北市＋板橋區）看車輛分布；顏色依數量分 6 級深淺，點縣市看各區地圖');
   const holder=el('<div style="display:grid;gap:16px"></div>'); main.append(holder); holder.append(el('<p class="note">載入車輛資料與地圖中…</p>'));
   loadVehicles().then(()=>{ holder.innerHTML=''; areaBody(holder); }).catch(()=>{ holder.innerHTML='<section class="panel"><p style="margin:0">找不到車輛資料。</p></section>'; });
 }
@@ -722,44 +748,49 @@ function areaBody(holder){
   </div></section>`);
   holder.append(f);
   const wrap=el('<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:start"></div>'); holder.append(wrap);
-  const mapP2=panel(wrap,'縣市分布','顏色越深數值越高；點縣市看各區');
-  const side=el('<div style="display:grid;gap:16px"></div>'); wrap.append(side);
+  const cMap=panel(wrap,'縣市分布','顏色越深數量越多；點縣市看各區');
+  const dMap=panel(wrap,'各區分布','');
   const below=el('<div style="display:grid;gap:16px"></div>'); holder.append(below);
   f.querySelector('#ar-m').value=AF.metric; f.querySelector('#ar-sp').value=AF.sp;
   f.querySelector('#ar-m').onchange=e=>{AF.metric=e.target.value; draw();};
   f.querySelector('#ar-sp').onchange=e=>{AF.sp=e.target.value; draw();};
-  let topo=null;
+  let counties=null, towns=null;
   const base=()=>V.rows.filter(x=>(!state.branch||x.br===state.branch)&&(!AF.sp||x.sp.includes(AF.sp)));
   const metric=()=>AREA_METRICS.find(m=>m[0]===AF.metric);
-  const val=(arr,m)=>{ const k=arr.filter(m[2]).length; return m[3]==='%'?(arr.length?k/arr.length*100:0):k; };
+  const val=(arr,m)=>{ if(!arr||!arr.length) return 0; const k=arr.filter(m[2]).length; return m[3]==='%'?k/arr.length*100:k; };
   const txt=(v,m)=>m[3]==='%'?p1(v):fmt(v)+' 台';
+  const fmtV=m=>v=>m[3]==='%'?p1(v):fmt(v);
+  const nm=s=>(s||'').replace(/臺/g,'台');
   function draw(){
     const rows=base(), m=metric(); const byCity={}; rows.forEach(x=>{const c=x.city||'（未填）'; (byCity[c]=byCity[c]||[]).push(x)});
-    mapP2.innerHTML='';
-    if(!topo){ mapP2.append(el('<p class="note">地圖載入中…（需要網路）</p>')); }
-    else {
-      const W=360,H=520; const feats=topojson.feature(topo,topo.objects.counties).features; feats.forEach(ft=>ft.properties.name=ft.properties.COUNTYNAME.replace(/臺/g,'台'));
-      const mainF=feats.filter(ft=>!['金門縣','連江縣'].includes(ft.properties.name));
-      const proj=d3.geoMercator().fitExtent([[10,10],[W-10,H-10]],{type:'FeatureCollection',features:mainF}); const path=d3.geoPath(proj);
-      const vals=mainF.map(ft=>{const a=byCity[ft.properties.name]||[]; return a.length?val(a,m):0}); const max=Math.max(...vals,1);
-      const color=v=>v<=0?'#e5e7eb':`color-mix(in srgb, var(--s1, #2563eb) ${Math.round(15+85*Math.sqrt(v/max))}%, #f8fafc)`;
-      const svg=d3.create('svg').attr('viewBox',`0 0 ${W} ${H}`).attr('role','img').attr('aria-label','台灣縣市地圖').style('width','100%').style('max-width','420px').style('display','block').style('margin','0 auto');
-      svg.selectAll('path').data(mainF).join('path').attr('d',path)
-        .attr('fill',ft=>{const a=byCity[ft.properties.name]||[]; return color(a.length?val(a,m):0)})
-        .attr('stroke',ft=>ft.properties.name===AF.city?'#111':'#fff').attr('stroke-width',ft=>ft.properties.name===AF.city?2:.8).style('cursor','pointer')
-        .on('mousemove',(e,ft)=>{const a=byCity[ft.properties.name]||[]; showTip(e,`<b>${esc(ft.properties.name)}</b><br>車輛 ${fmt(a.length)} 台<br>${esc(m[1])}：${a.length?txt(val(a,m),m):'—'}`)})
-        .on('mouseleave',hideTip).on('click',(e,ft)=>{AF.city=ft.properties.name; hideTip(); draw();});
-      svg.selectAll('text').data(mainF.filter(ft=>(byCity[ft.properties.name]||[]).length)).join('text').attr('transform',ft=>`translate(${path.centroid(ft)})`).attr('text-anchor','middle').attr('font-size',9).attr('fill','#111').style('pointer-events','none').text(ft=>ft.properties.name.slice(0,2));
-      mapP2.append(svg.node());
-      const off=['金門縣','連江縣'].map(c=>[c,(byCity[c]||[]).length]).filter(c=>c[1]);
-      mapP2.append(el(`<p class="note">${off.length?off.map(c=>esc(c[0])+' '+fmt(c[1])+' 台').join('、')+'（離島未畫入）；':''}未填轄區 ${fmt((byCity['（未填）']||[]).length)} 台</p>`));
-    }
-    side.innerHTML=''; const cs=Object.entries(byCity).map(([c,a])=>[c,a,val(a,m)]).sort((a,b)=>b[2]-a[2]||b[1].length-a[1].length);
-    const pc=panel(side,'縣市排行',`${esc(m[1])}；共 ${fmt(rows.length)} 台`);
-    hbars(pc,cs.slice(0,15).map(([c,a,v])=>({l:c,n:v,txt:txt(v,m)+(m[3]==='%'?'（'+fmt(a.length)+' 台）':''),c:c===AF.city?'var(--crit)':null,go:()=>{AF.city=c; draw();}})));
-    below.innerHTML=''; if((!AF.city||!byCity[AF.city])&&cs.length) AF.city=cs[0][0];
+    const cs=Object.entries(byCity).map(([c,a])=>[c,a,val(a,m)]).sort((a,b)=>b[2]-a[2]||b[1].length-a[1].length);
+    if((!AF.city||!byCity[AF.city])&&cs.length) AF.city=cs.find(c=>c[0]!=='（未填）')?.[0]||cs[0][0];
     const ca=byCity[AF.city]||[]; const byDist={}; ca.forEach(x=>{const d=x.dist||'（未填區域）'; (byDist[d]=byDist[d]||[]).push(x)});
-    const pd=panel(below,`${esc(AF.city)} 各區`,`${fmt(ca.length)} 台；點地圖或縣市排行切換縣市；點區域列匯出該區車輛名單`);
+    // 縣市圖
+    cMap.innerHTML='';
+    if(!counties) cMap.append(el('<p class="note">地圖載入中…（需要網路）</p>'));
+    else {
+      const feats=topojson.feature(counties,counties.objects.counties).features.filter(ft=>!['金門縣','連江縣'].includes(nm(ft.properties.COUNTYNAME)));
+      const sc=drawMap(cMap,feats,ft=>nm(ft.properties.COUNTYNAME),c=>val(byCity[c],m),{selected:AF.city,label:'台灣縣市地圖',onClick:c=>{AF.city=c; draw();},tipOf:c=>`<b>${esc(c)}</b><br>車輛 ${fmt((byCity[c]||[]).length)} 台<br>${esc(m[1])}：${byCity[c]?txt(val(byCity[c],m),m):'—'}`});
+      cMap.append(el(mapLegend(sc,fmtV(m))));
+      const off=['金門縣','連江縣'].map(c=>[c,(byCity[c]||[]).length]).filter(c=>c[1]);
+      cMap.append(el(`<p class="note">${off.length?off.map(c=>esc(c[0])+' '+fmt(c[1])+' 台').join('、')+'（離島未畫入）；':''}未填轄區 ${fmt((byCity['（未填）']||[]).length)} 台</p>`));
+    }
+    // 各區圖
+    dMap.innerHTML=''; dMap.parentElement.querySelector('.panel-h h2').textContent=AF.city+' 各區分布';
+    if(!towns) dMap.append(el('<p class="note">各區地圖載入中…</p>'));
+    else {
+      const tf=topojson.feature(towns,towns.objects.towns).features.filter(ft=>nm(ft.properties.COUNTYNAME)===AF.city);
+      if(!tf.length) dMap.append(el('<p class="note">此縣市沒有地圖資料</p>'));
+      else { const sc=drawMap(dMap,tf,ft=>nm(ft.properties.TOWNNAME),d=>val(byDist[d],m),{label:AF.city+'各區地圖',tipOf:d=>`<b>${esc(AF.city+d)}</b><br>車輛 ${fmt((byDist[d]||[]).length)} 台<br>${esc(m[1])}：${byDist[d]?txt(val(byDist[d],m),m):'—'}`});
+        dMap.append(el(mapLegend(sc,fmtV(m)))); }
+    }
+    // 縣市排行＋各區表
+    below.innerHTML='';
+    const g=el('<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;align-items:start"></div>'); below.append(g);
+    const pc=panel(g,'縣市排行',`${esc(m[1])}；共 ${fmt(rows.length)} 台`);
+    hbars(pc,cs.slice(0,15).map(([c,a,v])=>({l:c,n:v,txt:txt(v,m)+(m[3]==='%'?'（'+fmt(a.length)+' 台）':''),c:c===AF.city?'#d9480f':null,go:()=>{AF.city=c; draw();}})));
+    const pd=panel(g,`${esc(AF.city)} 各區`,`${fmt(ca.length)} 台；點區域列匯出該區車輛名單`);
     const bx=el(`<div class="btn-row" style="margin-bottom:8px"><button type="button" class="btn">⤓ 匯出 ${esc(AF.city)} 全部車輛名單（Excel）</button></div>`); bx.querySelector('button').onclick=()=>exportVehicles(`轄區名單_${AF.city}_${D.asOf}`,ca); pd.append(bx);
     const R=Object.entries(byDist).map(([d,a])=>({name:d,branch:AF.city,a,n:a.length,act:val(a,AREA_METRICS[1]),churn:val(a,AREA_METRICS[2]),renew:a.filter(x=>x.renew).length,opp:a.filter(x=>x.oppAmt>0).length,spend:a.reduce((s,x)=>s+x.spend,0)}));
     table(pd,{name:'轄區分析_'+AF.city,rows:R,sort:'n',onRow:r=>exportVehicles(`轄區名單_${AF.city}${r.name}_${D.asOf}`,r.a),cols:[
@@ -773,9 +804,9 @@ function areaBody(holder){
     ]});
   }
   draw();
-  loadMap().then(t=>{topo=t; draw();}).catch(()=>{ mapP2.innerHTML='<p class="note">地圖載入失敗（需要網路連線），右側與下方統計仍可使用。</p>'; });
+  loadMap('counties-10t.json').then(t=>{counties=t; draw();}).catch(()=>{ cMap.innerHTML='<p class="note">地圖載入失敗（需要網路連線），下方統計仍可使用。</p>'; });
+  loadMap('towns-10t.json').then(t=>{towns=t; draw();}).catch(()=>{ dMap.innerHTML='<p class="note">各區地圖載入失敗（需要網路連線）。</p>'; });
 }
-
 function pageLookup(main,param){
   head(main,'車輛查詢','選擇牌照號碼帶出車主與車輛基本資料；可依車型、車齡、里程、保固、服務廠、專員、業務、消費習慣篩選');
   const holder=el('<div style="display:grid;gap:16px"></div>'); main.append(holder);
