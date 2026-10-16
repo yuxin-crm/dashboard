@@ -622,7 +622,7 @@ function exportVehicles(name,list){
   exportXlsx(name,H,R);
 }
 
-// ---------- 舊換新招攬（規則為預設值，待 2418 確認） ----------
+// ---------- 舊換新招攬（2418 確認 2026-10-16 先採用預設門檻） ----------
 const RENEW={strongAge:10, strongKm:200000, age:7, km:150000, spend:30000, watchAge:5};
 function renewOf(x){
   if(x.model==='他牌') return null;  // 他牌車不列入（2418 確認 2026-10-16）
@@ -641,7 +641,7 @@ function pageRenew(main){
   loadVehicles().then(()=>{ holder.innerHTML=''; renewBody(holder); }).catch(()=>{ holder.innerHTML='<section class="panel"><p style="margin:0">找不到車輛資料。</p></section>'; });
 }
 function renewBody(holder){
-  const rule=el(`<section class="panel"><div class="panel-h"><h2>判斷規則</h2><p>預設門檻，待確認後可調整；他牌車不列入</p></div><div class="kv">
+  const rule=el(`<section class="panel"><div class="panel-h"><h2>判斷規則</h2><p>2418 確認先採用此門檻（2026-10-16）；他牌車不列入</p></div><div class="kv">
     <div style="white-space:nowrap">強烈建議</div><div style="text-align:left;font-weight:400">車齡 ≥ ${RENEW.strongAge} 年，或里程 ≥ ${fmt(RENEW.strongKm)} km</div>
     <div style="white-space:nowrap">建議</div><div style="text-align:left;font-weight:400">車齡 ≥ ${RENEW.age} 年，且（里程 ≥ ${fmt(RENEW.km)} km 或一年維修 ≥ NT$${fmt(RENEW.spend)}）</div>
     <div style="white-space:nowrap">留意</div><div style="text-align:left;font-weight:400">車齡 ≥ ${RENEW.watchAge} 年，且一年維修 ≥ NT$${fmt(RENEW.spend)}（維修支出高）</div></div></section>`);
