@@ -482,7 +482,10 @@ function pageAbout(main){
 // 公開網址（GitHub Pages）只載入去識別化資料 data/vehicles-deid.js：車牌、車主為 ES 編碼，無姓名、電話。
 // 本機開啟（file: 或 localhost）時優先載入含個資的完整資料：分享包 data/vehicles.js → 開發機私人資料夾；都沒有才用去識別化資料。
 const canPrivate=location.protocol==='file:'||location.hostname==='localhost'||location.hostname==='127.0.0.1';
-const PRIVATE_SRCS=canPrivate?['data/vehicles.js','../../yuxin-crm/private/vehicles.js','data/vehicles-deid.js']:['data/vehicles-deid.js'];
+// 版本號：index.html 載入 app.js 時帶的 ?v=，資料更新後瀏覽器才不會用到快取的舊檔
+const APPV=(()=>{try{return new URL(document.currentScript.src).searchParams.get('v')||''}catch(e){return ''}})();
+const withV=s=>APPV?s+'?v='+APPV:s;
+const PRIVATE_SRCS=(canPrivate?['data/vehicles.js','../../yuxin-crm/private/vehicles.js','data/vehicles-deid.js']:['data/vehicles-deid.js']).map(withV);
 let V=null, Vloading=null;
 const LF={q:'',model:'',age:'',km:'',w:'',br:'',adv:'',tech:'',sales:'',habit:'',opp:'',part:'',pst:'any',sort:'spend',dir:-1,page:0};
 function loadVehicles(){
