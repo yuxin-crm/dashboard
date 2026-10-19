@@ -379,10 +379,10 @@ function pagePeople(kind){return function(main){
     {cls:'warn',l:'保養逾期待邀約最多',val:to?esc(to.name):'—',sub:to?`${fmt(v(to.r,'act_mover'))} 位`:''},
     {cls:'crit',l:'保固到期待聯絡最多',val:tw?esc(tw.name):'—',sub:tw?`${fmt(v(tw.r,'act_w30'))} 位`:''},
   ]);
+  if(kind!=='sales') prefPanel(main,kind);  // 指定偏好放在排名表上方，打開頁面就看得到
   const t=panel(main,lbl+'排名',state.branch?esc(state.branch):(isAdv?'全公司（不含非一般服務廠）；點列切換到該廠':'全公司'));
   if(kind==='tech'&&!D.techs){ t.append(el('<p class=\"note\">尚無技師彙總資料，請重新執行 tools/regenerate-all.ps1。</p>')); return; }
   peopleTable(t,kind,'act_mover');
-  if(kind!=='sales') prefPanel(main,kind);
   main.append(el(`<p class="note">再往下的客戶名單（Customer 360 → Vehicle 360）含個資，不在此儀表板呈現，需在正式 CRM 系統依權限開啟。</p>`));
 }}
 
