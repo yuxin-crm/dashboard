@@ -382,8 +382,46 @@ function pagePeople(kind){return function(main){
   const t=panel(main,lbl+'排名',state.branch?esc(state.branch):(isAdv?'全公司（不含非一般服務廠）；點列切換到該廠':'全公司'));
   if(kind==='tech'&&!D.techs){ t.append(el('<p class=\"note\">尚無技師彙總資料，請重新執行 tools/regenerate-all.ps1。</p>')); return; }
   peopleTable(t,kind,'act_mover');
+  if(kind!=='sales') prefPanel(main,kind);
   main.append(el(`<p class="note">再往下的客戶名單（Customer 360 → Vehicle 360）含個資，不在此儀表板呈現，需在正式 CRM 系統依權限開啟。</p>`));
 }}
+
+// ---------- 指定偏好：客戶近 3 次有 2 次以上找同一位服務專員／技師（總表「指定服專姓名」「指定技師姓名」） ----------
+function prefPanel(main,kind){
+  const isAdv=kind==='adv', lbl=isAdv?'服務專員':'技術專員', key=isAdv?'指定服專':'指定技師', served=x=>isAdv?x.adv:x.tech;
+  const box=el('<div style="display:grid;gap:16px"></div>'); main.append(box);
+  const p=panel(box,`${lbl}指定偏好`,`近 3 次回廠有 2 次以上找同一位${isAdv?'服務專員':'技師'}＝指定；${state.branch?esc(state.branch):'全公司'}；點列看被指定的車輛並匯出 Excel`);
+  p.append(el('<p class="note">載入車輛資料中…</p>'));
+  loadVehicles().then(()=>{
+    const rows=V.rows.filter(x=>!state.branch||x.br===state.branch);
+    const S={}; const get=n=>S[n]=S[n]||{name:n,br:{},n:0,des:[],self:0};
+    rows.forEach(x=>{ const s=served(x); if(s&&!/^(其他|未指派)/.test(s)){ const o=get(s); o.n++; o.br[x.br]=(o.br[x.br]||0)+1; }
+      const d=vv(x,key); if(d){ const o=get(d); o.des.push(x); if(d===s) o.self++; } });
+    const R=Object.values(S).filter(o=>o.n>0||o.des.length>0).map(o=>{ const d=o.des, dn=d.length;
+      return {name:o.name,branch:Object.entries(o.br).sort((a,b)=>b[1]-a[1])[0]?.[0]||'',o,n:o.n,dn,self:o.self,rate:o.n?o.self/o.n*100:0,
+        spend:dn?d.reduce((a,x)=>a+x.spend,0)/dn:0, act:dn?d.filter(x=>x.days<=180).length/dn*100:0, other:o.n<20}; });
+    const totN=rows.filter(x=>vv(x,key)).length;
+    p.innerHTML=`<p class="note">共 ${fmt(rows.length)} 台中，${fmt(totN)} 台（${p1(pct(totN,rows.length))}）有指定${isAdv?'服務專員':'技師'}；負責車輛未滿 20 台的人員排在最後、不列入排名。指定率＝負責車輛（前一張工單是他）中，客戶也指定他的比例；被指定車輛＝所有指定他的車（最近一次可能由別人接待）</p>`;
+    const det=el('<div></div>');
+    table(p,{name:`${lbl}指定偏好`,rank:1,rows:R,sort:'rate',search:1,onRow:r=>show(r),cols:[
+      {k:'name',t:lbl,l2:1,get:r=>r.name,text:r=>esc(r.name)},
+      {k:'branch',t:'主要服務廠',l2:1,get:r=>r.branch,text:r=>esc(r.branch||'—')},
+      {k:'n',t:'負責車輛',get:r=>r.n,text:r=>fmt(r.n)},
+      {k:'dn',t:'被指定車輛',get:r=>r.dn,text:r=>fmt(r.dn)},
+      {k:'self',t:'負責車輛中指定他',get:r=>r.self,text:r=>fmt(r.self)},
+      {k:'rate',t:'指定率',get:r=>r.rate,text:r=>p1(r.rate)},
+      {k:'spend',t:'指定客平均一年消費',get:r=>r.spend,text:r=>r.dn?'NT$'+fmt(r.spend):'—'},
+      {k:'act',t:'指定客近 180 天回廠率',get:r=>r.act,text:r=>r.dn?p1(r.act):'—'},
+    ]});
+    box.append(det);
+    function show(r){ det.innerHTML=''; const list=r.o.des; const d=panel(det,`指定 ${esc(r.name)} 的車輛`,`${fmt(list.length)} 台；指定率 ${p1(r.rate)}`);
+      const bx=el(`<div class="btn-row" style="margin-bottom:8px"><button type="button" class="btn">⤓ 匯出指定 ${esc(r.name)} 的車輛名單（Excel）</button></div>`); bx.querySelector('button').onclick=()=>exportVehicles(`指定${lbl}_${r.name}_${D.asOf}`,list); d.append(bx);
+      const g=el('<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px"></div>'); d.append(g);
+      const dist=(title,fn)=>{ const m={}; list.forEach(x=>{const k=fn(x)||'—'; m[k]=(m[k]||0)+1}); const q=panel(g,title,''); hbars(q,Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([k,n])=>({l:k,n,txt:fmt(n)+'（'+p1(pct(n,list.length))+'）'}))); };
+      dist('服務廠',x=>x.br); dist('車型',x=>x.model); dist('回廠狀況',x=>(RECENCY.find(rr=>rr[2](x))||[])[1]);
+      det.scrollIntoView({block:'start'}); }
+  }).catch(()=>{ p.innerHTML='<p class="note">找不到車輛資料，無法計算指定偏好。</p>'; });
+}
 
 function pageQuality(main){
   const r=cur(), n=v(r,'veh');
