@@ -93,13 +93,15 @@ function curRoute(){const id=(location.hash.match(/^#\/([\w-]+)/)||[])[1]; retur
 function routeParam(){const m=location.hash.match(/^#\/[\w-]+\/(.+)$/); return m?decodeURIComponent(m[1]):'';}
 
 const DATA_START='2025-08-18';  // 名單起始日（2418）
+// 資料基準日：UIO 最新的前一工單日期（2418 確認 2026-11-20）；舊資料沒有時用產生日
+const BASE=()=>D.dataDate||D.asOf;
 const RO_RANGE=()=>D.roFrom&&D.roTo?D.roFrom+'～'+D.roTo:'一年內';  // 4W0 實際結帳日期區間
 function buildNav(){
   let n=0;
   document.getElementById('nav').innerHTML=ROUTES.map(r=>r.g?`<div class="nav-g">${r.g}</div>`:`<a class="nav-a" href="#/${r.id}" data-id="${r.id}"><span class="no">${++n}</span>${r.t}</a>`).join('');
-  document.getElementById('sideFoot').innerHTML='來源：UIO客戶數據平台.xlsx（總表為主）<br>'+fmt(D.all[0])+' 台車・資料基準日 '+D.asOf;
+  document.getElementById('sideFoot').innerHTML='來源：UIO客戶數據平台.xlsx（總表為主）<br>'+fmt(D.all[0])+' 台車・資料基準日 '+BASE();
   // 名單自 2025-08-18 起陸續累加（2418 確認 2026-10-16）；結束日取最新工單結帳日
-  document.getElementById('topMeta').textContent='資料基準日 '+D.asOf+'｜工單 '+DATA_START+'～'+(D.roTo||months[months.length-1]);
+  document.getElementById('topMeta').textContent='資料基準日 '+BASE()+'｜工單 '+DATA_START+'～'+BASE();
   const sel=document.getElementById('brSel');
   sel.innerHTML='<option value="">全公司</option>'+branchNames.map(b=>`<option value="${esc(b)}">${esc(b)}${OTHER.has(b)?'（其他）':''}</option>`).join('');
   sel.onchange=()=>setBranch(sel.value);
